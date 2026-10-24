@@ -948,26 +948,13 @@ async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR)
   const { version } = await fetchLatestBaileysVersion()
 
-  // Robust: verificar si la sesión está vinculada (credenciales registradas)
-  let esVinculada = false
-  try {
-    if (state.creds && state.creds.registered === true) {
-      esVinculada = true
-    } else {
-      // Fallback: leer el archivo creds.json físicamente
-      const credsPath = path.join(AUTH_DIR, 'creds.json')
-      if (fs.existsSync(credsPath)) {
-        const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'))
-        esVinculada = creds.registered === true
-      }
-    }
-  } catch (err) {
-    log.error('Error al verificar sesión existente', err)
-    esVinculada = false
-  }
+  // Verificar si ya existe una sesión guardada (archivos de credenciales)
+  // Si hay credenciales, no preguntar por el método de vinculación
+  const credsPath = path.join(AUTH_DIR, 'creds.json')
+  const tieneSesionGuardada = fs.existsSync(credsPath)
 
-  // Solo si la sesión no está vinculada: elegir QR o código de emparejamiento
-  if (!esVinculada && !vinculacion) {
+  // Solo si NO hay sesión guardada Y no se ha elegido método: preguntar QR/código
+  if (!tieneSesionGuardada && !vinculacion) {
     vinculacion = await elegirVinculacion({
       metodoConfig: METODO_VINCULACION,
       numeroConfig: NUMERO_VINCULACION,

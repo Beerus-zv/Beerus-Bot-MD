@@ -289,11 +289,11 @@ export function configurarAlertasAuto(chat, activo) {
 }
 
 // Antilink
-export function obtenerAntilink(chat) {
-  return db.prepare('SELECT * FROM antilink WHERE chat = ?').get(chat) ?? null
+export function obtenerAntilink(grupo) {
+  return db.prepare('SELECT * FROM antilink WHERE grupo = ?').get(grupo) ?? null
 }
-export function dominiosPermitidos(chat) {
-  const row = obtenerAntilink(chat)
+export function dominiosPermitidos(grupo) {
+  const row = obtenerAntilink(grupo)
   try {
     if (!row?.whitelist) return []
     return Array.isArray(row.whitelist) ? row.whitelist : String(row.whitelist).split(/[,\s]+/).filter(Boolean)
@@ -301,7 +301,7 @@ export function dominiosPermitidos(chat) {
 }
 export function configurarAntilink(jid, config = {}) {
   const actual = obtenerAntilink(jid) || {}
-  db.prepare('INSERT INTO antilink (chat, activo, accion, whitelist) VALUES (?, ?, ?, ?) ON CONFLICT(chat) DO UPDATE SET activo = excluded.activo, accion = excluded.accion, whitelist = excluded.whitelist').run(jid, config.activo ?? actual.activo ?? 0, config.accion ?? actual.accion ?? 'kick', config.whitelist ?? actual.whitelist ?? '')
+  db.prepare('INSERT INTO antilink (grupo, activo, accion, whitelist) VALUES (?, ?, ?, ?) ON CONFLICT(grupo) DO UPDATE SET activo = excluded.activo, accion = excluded.accion, whitelist = excluded.whitelist').run(jid, config.activo ?? actual.activo ?? 0, config.accion ?? actual.accion ?? 'kick', config.whitelist ?? actual.whitelist ?? '')
   return { activo: config.activo ?? actual.activo ?? 0, accion: config.accion ?? actual.accion ?? 'kick', whitelist: config.whitelist ?? actual.whitelist ?? '' }
 }
 
