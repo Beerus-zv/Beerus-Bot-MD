@@ -1031,6 +1031,8 @@ async function startBot() {
     if (connection === 'open') {
       intentosReconexion = 0
       log.sistema(`✅ ${BOT_NAME} conectado correctamente`)
+      // Guardar credenciales inmediatamente para persistir la sesión (evitar volver a preguntar QR/código)
+      saveCreds()
       // Precarga los nombres de los grupos para que los logs los muestren
       sock
         .groupFetchAllParticipating()
