@@ -21,7 +21,8 @@ import { obtenerAvatarBeerus } from './lib/avatar.js'
 import { adquirirBloqueo, liberarBloqueo } from './lib/instancia.js'
 
 // ───────────── Configuración ─────────────
-import { BOT_NAME, PREFIX, AUTH_DIR, MENCIONES_BOT, LOG_LEVEL } from './config.js'
+import { BOT_NAME, PREFIX, AUTH_DIR, MENCIONES_BOT, LOG_LEVEL, METODO_VINCULACION, NUMERO_VINCULACION } from './config.js'
+import { elegirVinculacion, formatearCodigo } from './lib/vinculacion.js'
 
 import antidelete from './commands/antidelete.js'
 import antispam from './commands/antispam.js'
@@ -889,6 +890,8 @@ let socketActivo = null
 let reconexionPendiente = null
 let intentosReconexion = 0
 let intentosReemplazo = 0
+// Metodo de vinculacion elegido (se decide una sola vez y se reutiliza al reconectar)
+let vinculacion = null
 
 const MAX_INTENTOS = 15
 const ESPERA_BASE = 3000
@@ -941,6 +944,15 @@ async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR)
   const { version } = await fetchLatestBaileysVersion()
 
+  // Solo si la sesión no está vinculada: elegir QR o código de emparejamiento
+  if (!state.creds.registered && !vinculacion) {
+    vinculacion = await elegirVinculacion({
+      metodoConfig: METODO_VINCULACION,
+      numeroConfig: NUMERO_VINCULACION,
+      argv: process.argv.slice(2),
+    })
+  }
+
   const sock = makeWASocket({
     version,
     logger,
@@ -984,10 +996,30 @@ async function startBot() {
   }
 
   // Estado de la conexión
+  let codigoSolicitado = false
+
   sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
     if (qr) {
-      console.log('📱 Escanea este QR desde WhatsApp > Dispositivos vinculados:')
-      qrcode.generate(qr, { small: true })
+      if (vinculacion?.metodo === 'codigo' && !sock.authState.creds.registered) {
+        // El primer evento qr indica que el socket está listo para pedir el código
+        if (!codigoSolicitado) {
+          codigoSolicitado = true
+          sock
+            .requestPairingCode(vinculacion.numero)
+            .then((codigo) => {
+              console.log(`\n🔑 Código de vinculación: ${formatearCodigo(codigo)}`)
+              console.log('📱 En WhatsApp: Dispositivos vinculados > Vincular un dispositivo')
+              console.log('   > Vincular con el número de teléfono, e ingresa el código.\n')
+            })
+            .catch((err) => {
+              codigoSolicitado = false
+              log.error('No se pudo generar el código de vinculación', err)
+            })
+        }
+      } else {
+        console.log('📱 Escanea este QR desde WhatsApp > Dispositivos vinculados:')
+        qrcode.generate(qr, { small: true })
+      }
     }
 
     if (connection === 'connecting') {

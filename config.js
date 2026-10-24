@@ -15,6 +15,21 @@ export const PREFIX = PREFIXES
 /** Carpeta de la sesion de WhatsApp */
 export const AUTH_DIR = 'auth_info'
 
+/**
+ * Metodo de vinculacion (solo cuando la sesion aun no esta registrada):
+ *   'preguntar' -> pregunta por consola (QR o codigo)
+ *   'qr'        -> siempre muestra el QR
+ *   'codigo'    -> codigo de emparejamiento de 8 caracteres
+ * Tambien se puede forzar al iniciar: `node index.js --qr` o `node index.js --code`.
+ */
+export const METODO_VINCULACION = 'preguntar'
+
+/**
+ * Numero del bot para el codigo de emparejamiento (opcional).
+ * Con codigo de pais, solo digitos. Ej: '5215512345678'. Si queda vacio, se pregunta.
+ */
+export const NUMERO_VINCULACION = ''
+
 /** Palabras que activan al bot cuando se escriben en un mensaje */
 export const MENCIONES_BOT = ['beerus']
 
