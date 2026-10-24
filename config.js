@@ -20,6 +20,12 @@ export const PREFIX = PREFIXES
 export const AUTO_ACTUALIZAR = true
 export const RAMA_ACTUALIZACION = ''
 
+/**
+ * Navegador que se muestra en WhatsApp > Dispositivos vinculados.
+ * Opciones: 'Firefox', 'Chrome', 'Safari', 'Edge', 'Opera'.
+ */
+export const NAVEGADOR_WA = 'Firefox'
+
 /** Carpeta de la sesion de WhatsApp */
 export const AUTH_DIR = 'auth_info'
 

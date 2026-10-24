@@ -21,7 +21,7 @@ import { obtenerAvatarBeerus } from './lib/avatar.js'
 import { adquirirBloqueo, liberarBloqueo } from './lib/instancia.js'
 
 // ───────────── Configuración ─────────────
-import { BOT_NAME, PREFIX, AUTH_DIR, MENCIONES_BOT, LOG_LEVEL, METODO_VINCULACION, NUMERO_VINCULACION } from './config.js'
+import { BOT_NAME, PREFIX, AUTH_DIR, MENCIONES_BOT, LOG_LEVEL, METODO_VINCULACION, NUMERO_VINCULACION, NAVEGADOR_WA } from './config.js'
 import { elegirVinculacion, formatearCodigo } from './lib/vinculacion.js'
 
 import antidelete from './commands/antidelete.js'
@@ -958,7 +958,7 @@ async function startBot() {
   const sock = makeWASocket({
     version,
     logger,
-    browser: [BOT_NAME, 'Chrome', '2.1.0'], // nombre que verás en "Dispositivos vinculados"
+    browser: [BOT_NAME, NAVEGADOR_WA, '2.1.0'], // nombre que verás en "Dispositivos vinculados"
     auth: {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, logger),
