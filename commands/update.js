@@ -12,14 +12,14 @@ export default async ({ sock, jid, msg, sender }) => {
   if (!esOwnerMsg({ msg, sender, sock })) {
     await sock.sendMessage(jid, {
       text: '⛔ Solo el propietario puede actualizar el bot.',
-      quoted: msg,
+      quoted: safeQuote(msg),
     })
     return
   }
 
   await sock.sendMessage(jid, {
     text: '🔄 Buscando actualizaciones...',
-    quoted: msg,
+    quoted: safeQuote(msg),
   })
 
   try {
@@ -54,7 +54,7 @@ export default async ({ sock, jid, msg, sender }) => {
         texto = `❌ Error al buscar actualizaciones.`
     }
 
-    await sock.sendMessage(jid, { texto, quoted: msg })
+    await sock.sendMessage(jid, { texto, quoted: safeQuote(msg) })
 
     // Si se actualizó, reiniciar el proceso
     if (resultado.estado === 'actualizado') {
@@ -68,7 +68,17 @@ export default async ({ sock, jid, msg, sender }) => {
     log.error('Error en comando .update', err)
     await sock.sendMessage(jid, {
       text: `❌ Error: ${err?.message || err}`,
-      quoted: msg,
+      quoted: safeQuote(msg),
     })
   }
+}
+
+/**
+ * Devuelve el mensaje original si es seguro para citar (texto), o undefined si no.
+ * Tipos seguros: 'conversation', 'extendedTextMessage'.
+ */
+function safeQuote(msg) {
+  if (!msg?.message) return undefined
+  const type = Object.keys(msg.message)[0]
+  return ['conversation', 'extendedTextMessage'].includes(type) ? msg : undefined
 }
