@@ -1,0 +1,20 @@
+# Dependencias
+node_modules/
+
+# Sesión de WhatsApp
+auth_info/
+
+# Base de datos local
+data/
+
+# Archivos temporales de ffmpeg (stickers de video)
+tmp/
+
+# Entorno
+.env
+.env.*
+
+# Logs
+*.log
+npm-debug.log*
+

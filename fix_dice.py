@@ -1,0 +1,5 @@
+with open('index.js','r',encoding='utf-8') as f: s=f.read()
+s = s.replace("import dice from './commands/dice.js'", "import dado from './commands/dado.js'")
+s = s.replace('dice,', 'dado,', 1)
+open('index.js','w',encoding='utf-8').write(s)
+print('dice fixed')
