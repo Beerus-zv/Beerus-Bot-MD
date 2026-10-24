@@ -15,7 +15,7 @@ export default async ({ sock, jid, msg, args, sender, esGrupo }) => {
     // Vincula el JID actual del owner (aunque sea @lid) a la tabla vip
     asegurarOwnerVip(db, { sock, msg, sender })
     db.exec(`INSERT OR IGNORE INTO vip (jid, rango) VALUES (?, 'vip')`, [usuario])
-    db.exec(`INSERT INTO vip_log (jid,accion,razon) VALUES (?,?,?)`, [sender, 'add', 'Agregado por admin'])
+    db.exec(`INSERT INTO vip_log (jid,accion,razon) VALUES (?,?,?)`, [usuario, 'add', 'Agregado por admin'])
     return await sock.sendMessage(jid, { text: `⭐ *VIP agregado:* ${args[1] || 'tú'}`, quoted: msg })
   }
   if (accion === 'remove') {
