@@ -35,6 +35,7 @@ import vip from './commands/vip.js'
 import vipbadge from './commands/vipbadge.js'
 import vipmenu from './commands/vipmenu.js'
 import vipboost from './commands/vipboost.js'
+import update from './commands/update.js'  // NUEVO
 import dona from './commands/dona.js'
 import gachaclaim from './commands/gachaclaim.js'
 import reclamarRandom from './commands/c.js'
@@ -310,6 +311,7 @@ const commands = {
   mute,
   restrict,
   system: systemcmd,
+  update,
   requests,
   approve,
   reject,

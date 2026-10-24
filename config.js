@@ -12,6 +12,14 @@ export const PREFIXES = ['.', '#', '/']
 /** Alias singular, por comodidad */
 export const PREFIX = PREFIXES
 
+/**
+ * Actualizacion automatica al iniciar con `npm start` (usa git).
+ * AUTO_ACTUALIZAR: false para desactivarla (o inicia con `--no-update`).
+ * RAMA_ACTUALIZACION: rama a seguir; vacio = la rama en la que esta el bot.
+ */
+export const AUTO_ACTUALIZAR = true
+export const RAMA_ACTUALIZACION = ''
+
 /** Carpeta de la sesion de WhatsApp */
 export const AUTH_DIR = 'auth_info'
 
