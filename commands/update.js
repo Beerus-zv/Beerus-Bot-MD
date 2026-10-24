@@ -54,7 +54,7 @@ export default async ({ sock, jid, msg, sender }) => {
         texto = `❌ Error al buscar actualizaciones.`
     }
 
-    await sock.sendMessage(jid, { texto, quoted: safeQuote(msg) })
+    await sock.sendMessage(jid, { text: texto, quoted: safeQuote(msg) })
 
     // Si se actualizó, reiniciar el proceso
     if (resultado.estado === 'actualizado') {
