@@ -5,6 +5,8 @@ import makeWASocket, {
   makeCacheableSignalKeyStore,
   normalizeMessageContent,
 } from '@whiskeysockets/baileys'
+import fs from 'node:fs'
+import path from 'node:path'
 import pino from 'pino'
 import qrcode from 'qrcode-terminal'
 
@@ -946,8 +948,26 @@ async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR)
   const { version } = await fetchLatestBaileysVersion()
 
+  // Robust: verificar si la sesión está vinculada (credenciales registradas)
+  let esVinculada = false
+  try {
+    if (state.creds && state.creds.registered === true) {
+      esVinculada = true
+    } else {
+      // Fallback: leer el archivo creds.json físicamente
+      const credsPath = path.join(AUTH_DIR, 'creds.json')
+      if (fs.existsSync(credsPath)) {
+        const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'))
+        esVinculada = creds.registered === true
+      }
+    }
+  } catch (err) {
+    log.error('Error al verificar sesión existente', err)
+    esVinculada = false
+  }
+
   // Solo si la sesión no está vinculada: elegir QR o código de emparejamiento
-  if (!state.creds.registered && !vinculacion) {
+  if (!esVinculada && !vinculacion) {
     vinculacion = await elegirVinculacion({
       metodoConfig: METODO_VINCULACION,
       numeroConfig: NUMERO_VINCULACION,
