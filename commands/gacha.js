@@ -1117,7 +1117,13 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
         `📄 Páginas leídas: *${resultado.paginas}*\n` +
         `🗂️ Personajes en catálogo: *${resultado.revisados}*\n` +
         `🔎 Encontrados en AniList: *${resultado.encontrados}*\n` +
-        `🔄 Rarezas corregidas: *${resultado.actualizados}*`,
+        `🔄 Rarezas corregidas: *${resultado.actualizados}*` +
+        (resultado.duplicados?.length
+          ? `\n♻️ Duplicados sin tocar: *${resultado.duplicados.length}* (${resultado.duplicados.map((d) => d.nombre).join(', ')})`
+          : '') +
+        (resultado.sinDatos?.length
+          ? `\n❔ Sin datos en AniList: *${resultado.sinDatos.length}* (${resultado.sinDatos.join(', ')})`
+          : ''),
       quoted: msg,
     })
     return

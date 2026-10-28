@@ -50,6 +50,17 @@ console.log(
     `(${resultado.encontrados} con datos en AniList) en ${segundos}s`
 )
 
+if (resultado.duplicados?.length) {
+  console.log(
+    '[rarezas] duplicados (misma persona que otra fila, no se tocan): ' +
+      resultado.duplicados.map((d) => `${d.nombre} = ${d.gemelo} (id ${d.id})`).join(' · ')
+  )
+}
+
+if (resultado.sinDatos?.length) {
+  console.log(`[rarezas] sin datos en AniList (se quedan con su rareza manual): ${resultado.sinDatos.join(' · ')}`)
+}
+
 const porRareza = new Map()
 for (const p of listarPersonajesGacha()) {
   porRareza.set(p.rareza, (porRareza.get(p.rareza) || 0) + 1)

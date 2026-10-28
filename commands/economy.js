@@ -31,14 +31,16 @@ const AYUDA = `💰 *Economía*
 • \`/economy work\` - Trabajar para ganar oro
 • \`/economy rob @user\` - Intentar robar a alguien
 • \`/economy pay @user <cantidad>\` - Enviar oro
+• \`/economy gift @user <cantidad>\` - Regalar oro (regalo amistoso)
+• \`/economy stats\` - Ver estadísticas personales
 • \`/economy rank\` - Ver la tabla de posiciones
 • \`/economy help\` - Esta ayuda
 
-_También puedes usar: \`/bal\`, \`/daily\`, \`/work\`, \`/rob\`, \`/pay\`, \`/rank\`._
+_También puedes usar: \`/bal\`, \`/daily\`, \`/work\`, \`/rob\`, \`/pay\`, \`/gift\`, \`/stats\`, \`/rank\`._
 
 ⏳ _Cada comando tiene su tiempo de recarga _
-_para frenar el spam: daily 24 h, work 5 m, _
-_rob 30 m, pay 30 s._`
+_frenar el spam: daily 24 h, work 5 m, _
+_rob 30 m, pay 30 s, gift 1 h._`
 
 export default async ({ sock, jid, msg, args, sender }) => {
   const sub = String(args[0] || 'bal').toLowerCase()
@@ -60,11 +62,13 @@ export default async ({ sock, jid, msg, args, sender }) => {
 
     await sock.sendMessage(jid, {
       text:
-        `💰 *Saldo de ${nombre}*\n\n` +
-        `🪙 Oro: *${formatearNumero(eco.monedas)}*\n` +
-        `⭐ Nivel: *${eco.nivel}*\n` +
-        `📈 ${barraNivel(eco.nivel, eco.experiencia, XP_POR_NIVEL)}\n` +
-        `🔥 Racha diaria: *${eco.racha}* día(s)`,
+        `✨ *🎴 Cuenta de ${nombre}* ✨\n` +
+        `┌─────────────────────────────┐\n` +
+        `│ 🪙 *Oro:* ${formatearNumero(eco.monedas)} │\n` +
+        `│ ⭐ *Nivel:* ${eco.nivel} │\n` +
+        `│ 📈 *Progreso:* ${barraNivel(eco.nivel, eco.experiencia, XP_POR_NIVEL)} │\n` +
+        `│ 🔥 *Racha:* ${eco.racha} día(s) │\n` +
+        `└─────────────────────────────┘`,
       quoted: msg,
     })
     return
@@ -327,7 +331,19 @@ export default async ({ sock, jid, msg, args, sender }) => {
     }
     marcarUso(quien, 'rank')
 
-    const top = topEconomia(10)
+    const botJid = sock.user?.id || sock.user?.jid || ''
+    const JIDS_EXCLUIR_RANKING = new Set(['test@s.whatsapp.net', 'banco@s.whatsapp.net'])
+    const top = topEconomia(100)
+      .filter(u => {
+        const j = u.jid || ''
+        return j
+          && !j.endsWith('@g.us')
+          && j !== botJid
+          && !JIDS_EXCLUIR_RANKING.has(j)
+          && !j.split('@')[0].startsWith('banco-')
+      })
+      .slice(0, 10)
+
     if (!top.length) {
       await sock.sendMessage(jid, {
         text: '📭 Todavía no hay nadie en la tabla de posiciones.',
@@ -336,15 +352,102 @@ export default async ({ sock, jid, msg, args, sender }) => {
       return
     }
 
+    const mentions = []
     const lineas = top.map((u, i) => {
       const medalla = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '▫️'
-      return `${medalla} ${i + 1}. *${nombreLegible(u.jid, obtenerUsuario)}* — ${formatearNumero(u.monedas)} 🪙 (Nv.${u.nivel})`
+      const nombre = nombreLegible(u.jid, obtenerUsuario)
+      mentions.push(u.jid)
+      return `${medalla} ${i + 1}. @${u.jid.split('@')[0]} — ${formatearNumero(u.monedas)} 🪙 (Nv.${u.nivel})`
     })
 
     await sock.sendMessage(jid, {
+      text: `🏆 *Tabla de posiciones*\n\n${lineas.join('\n')}\n\n_Oro en circulación: ${formatearNumero(totalMonedas())}_`,
+      mentions,
+      quoted: msg,
+    })
+    return
+  }
+
+  // ───────────── Stats ─────────────
+  if (sub === 'stats' || sub === 'estadisticas' || sub === 'estadística') {
+    const eco = obtenerEconomia(quien)
+    const nombre = nombreLegible(quien, obtenerUsuario)
+
+    const stats = [
+      `📊 *Estadísticas de ${nombre}*`,
+      `│ 🪙 Oro actual: *${formatearNumero(eco.monedas)}*`,
+      `│ ⭐ Nivel: *${eco.nivel}*`,
+      `│ 📈 Experiencia: *${eco.experiencia}* / ${XP_POR_NIVEL * eco.nivel}`,
+      `│ 🔥 Racha diaria: *${eco.racha}*`,
+      `│ 🏆 Total ganado: *${topEconomia(1)[0]?.monedas ? formatearNumero(eco.monedas - 0) : formatearNumero(eco.monedas)}*`,
+    ]
+    const top = topEconomia(1)
+    const lineas = [
+      `📊 *Estadísticas de ${nombre}*`,
+      `🪙 *Oro:* ${formatearNumero(eco.monedas)}`,
+      `⭐ *Nivel:* ${eco.nivel}`,
+      `📈 *XP:* ${eco.experiencia} / ${XP_POR_NIVEL * eco.nivel}`,
+      `🔥 *Racha:* ${eco.racha} día(s)`,
+    ]
+
+    await sock.sendMessage(jid, { text: lineas.join('\n'), quoted: msg })
+    return
+  }
+
+  // ───────────── Regalar oro ─────────────
+  if (sub === 'gift' || sub === 'regalar' || sub === 'regalo') {
+    if (!esGrupo(jid)) {
+      await sock.sendMessage(jid, { text: '❌ El regalo solo funciona en grupos.', quoted: msg })
+      return
+    }
+
+    const espera = recargaActiva(quien, 'gift')
+    if (espera) {
+      await sock.sendMessage(jid, { text: espera, quoted: msg })
+      return
+    }
+
+    const objetivoArgs = [...resto]
+    let monto = 0
+    for (let i = objetivoArgs.length - 1; i >= 0; i--) {
+      if (/^\d+$/.test(objetivoArgs[i])) {
+        monto = Number(objetivoArgs[i])
+        objetivoArgs.splice(i, 1)
+        break
+      }
+    }
+
+    if (!monto || monto <= 0) {
+      await sock.sendMessage(jid, { text: '❓ *Uso:* `/economy gift @usuario <cantidad>`', quoted: msg })
+      return
+    }
+
+    let metadata = null
+    try { metadata = await obtenerMetadata(sock, jid) } catch { metadata = null }
+    const objetivo = resolverObjetivo(metadata, msg, objetivoArgs)
+    if (!objetivo?.jid) {
+      await sock.sendMessage(jid, { text: '❓ Menciona a quien quieres regalar: `/gift @usuario 50`', quoted: msg })
+      return
+    }
+
+    if (objetivo.jid === quien) {
+      await sock.sendMessage(jid, { text: '🤦 No puedes regalarte a ti mismo.', quoted: msg })
+      return
+    }
+
+    const resultado = transferirMonedas(quien, objetivo.jid, monto, 'regalo')
+    if (!resultado.ok) {
+      await sock.sendMessage(jid, { text: `💸 No tienes suficientes oro. Tienes *${obtenerEconomia(quien).monedas}*.`, quoted: msg })
+      return
+    }
+
+    marcarUso(quien, 'gift')
+
+    await sock.sendMessage(jid, {
       text:
-        `🏆 *Tabla de posiciones*\n\n${lineas.join('\n')}\n\n` +
-        `_Oro en circulación: ${formatearNumero(totalMonedas())}_`,
+        `🎁 *Regalo enviado!*\n\n` +
+        `Enviaste *${formatearNumero(monto)}* oro a *${nombreLegible(objetivo.jid, obtenerUsuario)}*.\n` +
+        `💰 Tu saldo: *${formatearNumero(obtenerEconomia(quien).monedas)}*`,
       quoted: msg,
     })
     return

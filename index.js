@@ -11,7 +11,7 @@ import pino from 'pino'
 import qrcode from 'qrcode-terminal'
 
 // ───────────── Base de datos ─────────────
-import { db, contarMensaje, contarMensajeUsuario, alertasActivas, listarAlertas, obtenerAfk, quitarAfk, modoChat, palabraProhibidaEn, registrarAdvertencia, contarAdvertencias, limiteAdvertencias, borrarAdvertencias, alertasAutoActivas, configurarAlertasAuto, setAntiDelete, getAntiDelete, limpiarAntiDelete } from './database/db.js'
+import { db, contarMensaje, contarMensajeUsuario, alertasActivas, listarAlertas, obtenerAfk, quitarAfk, modoChat, palabraProhibidaEn, registrarAdvertencia, contarAdvertencias, limiteAdvertencias, borrarAdvertencias, alertasAutoActivas, configurarAlertasAuto, setAntiDelete, getAntiDelete, limpiarAntiDelete, obtenerEconomia, restarMonedas } from './database/db.js'
 import { obtenerMetadata, esAdmin, esMencionDelBot, extraerComandoTrasMencion, extraerPreguntaTrasMencion, tokenMencion, jidUsuario } from './lib/grupo.js'
 import { log, recordarGrupo, necesitaNombre, intentoNombre } from './lib/logger.js'
 import { autoReaccionar } from './lib/autoreact.js'
@@ -25,6 +25,10 @@ import { sincronizarRarezas } from './lib/gacha-internet.js'
 import { adquirirBloqueo, liberarBloqueo } from './lib/instancia.js'
 import { cargarComandos } from './lib/loader.js'
 import { COMANDOS_VIP, esVip, jidsDe } from './lib/vip.js'
+
+// ── Tarifa de oro por comando (categorías pagadas) ──
+const COSTE_COMANDO_ORO = 10
+const CATEGORIAS_COSTO_ORO = new Set(['gacha', 'descargas', 'entretenimiento', 'nsfw', 'juegos', 'multimedia', 'internet', 'interacciones', 'ia'])
 
 // ───────────── Configuración ─────────────
 import { BOT_NAME, PREFIX, AUTH_DIR, MENCIONES_BOT, LOG_LEVEL, METODO_VINCULACION, NUMERO_VINCULACION, NAVEGADOR_WA } from './config.js'
@@ -506,7 +510,6 @@ const commands = {
   r34: C.rule34,
   rule: C.rule34,
   h: C.hentai,
-  porno: C.hentai,
   dbooru: danbooru,
   // Alias en español de las acciones NSFW
   poto: ass,
@@ -1174,10 +1177,10 @@ const userSpamData = {}
           try {
             const antiActivado = getAntiDelete(jid)
             if (!antiActivado) return
-            // Verificar que el usuario que eliminó sea admin
+            // Anti-delete ignora cuando el eliminador es admin
             if (sender) {
               const metadata = await obtenerMetadataCacheada(sock, jid)
-              if (!esAdmin(metadata, sender)) return
+              if (esAdmin(metadata, sender)) return
             }
             // Frases burlonas estilo Beerus (dios de la destrucción)
             const frasesBeerus = [
@@ -1194,7 +1197,7 @@ const userSpamData = {}
             // Intentar obtener el contenido del mensaje citado o del historial
             const mensajeCacheado = (() => {
               const idDirecto = mensajeCache.get(msg.key.id)
-              if (idDirecto?.contenido) return idDirecto
+              if (idDirecto && (idDirecto.contenido !== undefined || idDirecto.mensajeOriginal)) return idDirecto
               // Buscar por chat + sender, el mensaje más reciente
               let mejor = null
               const limpiezaAntigua = Date.now() - TIEMPO_VIDA_MENSAJE
@@ -1214,12 +1217,20 @@ const userSpamData = {}
             const remitenteCache = mensajeCacheado.sender || ''
             const urlImagen = mensajeCacheado.urlImagen || null
             const urlVideo = mensajeCacheado.urlVideo || null
-
-            // Reenviar siempre con texto + frase Beerus (evita errores de imagen/video)
-            const opcionesEnviar = { quoted: msg, mentions: remitenteCache ? [jidUsuario(sender)] : undefined }
+            const urlAudio = mensajeCacheado.urlAudio || null
             const textoAnti = (contenidoAlmacenado ? 'Contenido: ' + contenidoAlmacenado + '\n\n' : '') + fraseBeerus + '\n' + (remitenteCache ? tokenMencion(sender) + ' borró un mensaje.' : '')
-            opcionesEnviar.text = textoAnti
-            await sock.sendMessage(jid, opcionesEnviar)
+
+            // Reenviar mensaje original si está disponible; de lo contrario solo texto
+            if (mensajeOriginal?.imageMessage || urlImagen) {
+              await sock.sendMessage(jid, { image: mensajeOriginal?.imageMessage?.url ? mensajeOriginal.imageMessage : urlImagen, caption: textoAnti, quoted: msg, mentions: remitenteCache ? [jidUsuario(sender)] : undefined })
+            } else if (mensajeOriginal?.videoMessage || urlVideo) {
+              await sock.sendMessage(jid, { video: mensajeOriginal?.videoMessage?.url ? mensajeOriginal.videoMessage : urlVideo, caption: textoAnti, quoted: msg, mentions: remitenteCache ? [jidUsuario(sender)] : undefined })
+            } else if (mensajeOriginal?.audioMessage || urlAudio) {
+              await sock.sendMessage(jid, { audio: mensajeOriginal?.audioMessage?.url ? mensajeOriginal.audioMessage : urlAudio, caption: textoAnti, quoted: msg, mentions: remitenteCache ? [jidUsuario(sender)] : undefined })
+            } else {
+              const opcionesEnviar = { quoted: msg, mentions: remitenteCache ? [jidUsuario(sender)] : undefined, text: textoAnti }
+              await sock.sendMessage(jid, opcionesEnviar)
+            }
           } catch (err) {
             log.error('Error en anti-delete', err)
           }
@@ -1286,6 +1297,20 @@ const userSpamData = {}
               quoted: msg,
             })
             return
+          }
+
+          // ── Tarifa de oro por comando (categorías pagadas) ──
+          const categoriaComando = categoriaDe(clave)
+          if (CATEGORIAS_COSTO_ORO.has(categoriaComando)) {
+            const eco = obtenerEconomia(sender)
+            if (eco.monedas < COSTE_COMANDO_ORO) {
+              await sock.sendMessage(jid, {
+                text: `🪙 No tienes suficiente oro. Necesitas *${COSTE_COMANDO_ORO}*, tienes *${eco.monedas}*.` ,
+                quoted: msg,
+              })
+              return
+            }
+            restarMonedas(sender, COSTE_COMANDO_ORO, 'comando', `${prefijo}${clave}`)
           }
 
           // Todos los comandos reciben el mismo contexto

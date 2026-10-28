@@ -16,6 +16,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS alertas (id INTEGER PRIMARY KEY AUTOINCREMENT, chat TEXT NOT NULL, texto TEXT NOT NULL, activo INTEGER NOT NULL DEFAULT 1, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')));
   CREATE TABLE IF NOT EXISTS alertas_estado (chat TEXT PRIMARY KEY, activo INTEGER NOT NULL DEFAULT 0);
   CREATE TABLE IF NOT EXISTS antilink (chat TEXT PRIMARY KEY, activo INTEGER NOT NULL DEFAULT 0, accion TEXT NOT NULL DEFAULT 'kick', whitelist TEXT, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')));
+  CREATE TABLE IF NOT EXISTS baneados_bot (jid TEXT PRIMARY KEY, razon TEXT, baneado_por TEXT, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')));
   CREATE TABLE IF NOT EXISTS economia (jid TEXT PRIMARY KEY, monedas INTEGER NOT NULL DEFAULT 100, nivel INTEGER NOT NULL DEFAULT 1, experiencia INTEGER NOT NULL DEFAULT 0, racha INTEGER NOT NULL DEFAULT 0, ultimo_diario TEXT, ultimo_trabajo TEXT, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')), ultimo_robo TEXT);
   CREATE TABLE IF NOT EXISTS economia_log (id INTEGER PRIMARY KEY AUTOINCREMENT, jid TEXT NOT NULL, tipo TEXT, monto INTEGER, motivo TEXT, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')));
   CREATE TABLE IF NOT EXISTS gacha_personajes (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT NOT NULL, anime TEXT, rareza TEXT, valor INTEGER NOT NULL DEFAULT 15, imagen TEXT, genero TEXT, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')));
@@ -67,6 +68,7 @@ try { db.exec('ALTER TABLE vip ADD COLUMN persona TEXT') } catch {}
 try { db.exec('ALTER TABLE antilink ADD COLUMN activo INTEGER NOT NULL DEFAULT 0') } catch {}
 try { db.exec('ALTER TABLE antilink ADD COLUMN accion TEXT NOT NULL DEFAULT "kick"') } catch {}
 try { db.exec('ALTER TABLE antilink ADD COLUMN whitelist TEXT') } catch {}
+try { db.exec('ALTER TABLE antilink RENAME COLUMN grupo TO chat') } catch {}
 
 // JIDs antiguos con '+' delante ('+573...@s.whatsapp.net') nunca coincidian
 // al comprobar el acceso. Se reparan (y se descartan si ya existe el limpio).
@@ -302,8 +304,8 @@ export function configurarAlertasAuto(chat, activo) {
 }
 
 // Antilink
-export function obtenerAntilink(grupo) {
-  return db.prepare('SELECT * FROM antilink WHERE grupo = ?').get(grupo) ?? null
+export function obtenerAntilink(chat) {
+  return db.prepare('SELECT * FROM antilink WHERE chat = ?').get(chat) ?? null
 }
 export function dominiosPermitidos(grupo) {
   const row = obtenerAntilink(grupo)
@@ -314,7 +316,7 @@ export function dominiosPermitidos(grupo) {
 }
 export function configurarAntilink(jid, config = {}) {
   const actual = obtenerAntilink(jid) || {}
-  db.prepare('INSERT INTO antilink (grupo, activo, accion, whitelist) VALUES (?, ?, ?, ?) ON CONFLICT(grupo) DO UPDATE SET activo = excluded.activo, accion = excluded.accion, whitelist = excluded.whitelist').run(jid, config.activo ?? actual.activo ?? 0, config.accion ?? actual.accion ?? 'kick', config.whitelist ?? actual.whitelist ?? '')
+  db.prepare('INSERT INTO antilink (chat, activo, accion, whitelist) VALUES (?, ?, ?, ?) ON CONFLICT(chat) DO UPDATE SET activo = excluded.activo, accion = excluded.accion, whitelist = excluded.whitelist').run(jid, config.activo ?? actual.activo ?? 0, config.accion ?? actual.accion ?? 'kick', config.whitelist ?? actual.whitelist ?? '')
   return { activo: config.activo ?? actual.activo ?? 0, accion: config.accion ?? actual.accion ?? 'kick', whitelist: config.whitelist ?? actual.whitelist ?? '' }
 }
 
@@ -538,12 +540,12 @@ export function marcarTrabajo(jid) { db.prepare("UPDATE economia SET ultimo_trab
 
 export function totalMonedas() { return Number(db.prepare('SELECT COALESCE(SUM(monedas),0) AS n FROM economia').get()?.n ?? 0) }
 
-export function transferirMonedas(desde, para, monto) {
+export function transferirMonedas(desde, para, monto, tipo = 'pay', descripcion = 'Pago') {
   if (!monto || monto <= 0) return { ok: false, motivo: 'cantidad' }
   const eco = obtenerEconomia(desde)
   if (eco.monedas < monto) return { ok: false, motivo: 'saldo' }
-  restarMonedas(desde, monto, 'pay', 'Pago')
-  sumarMonedas(para, monto, 'pay', 'Pago recibido')
+  restarMonedas(desde, monto, tipo, descripcion)
+  sumarMonedas(para, monto, tipo, descripcion === 'Pago recibido' ? 'Pago recibido' : (tipo === 'regalo' ? 'Regalo recibido' : 'Pago recibido'))
   return { ok: true }
 }
 

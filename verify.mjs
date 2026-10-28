@@ -679,6 +679,7 @@ seccion('Series en internet')
     image: { large: 'https://img.test/levi.jpg' },
     gender: 'Male',
     favourites: 38845,
+    media: { nodes: [{ meanScore: 85, popularity: 350000, seasonYear: 2013 }] },
   })
   if (
     pj?.nombre === 'Levi' &&
@@ -782,15 +783,90 @@ seccion('Rarezas del gacha')
 
   const fuente = leer('lib/gacha-internet.js')
   if (
-    fuente.includes('rarezaDeFavoritos(c.favourites) === rareza') &&
-    /rareza: rarezaDeFavoritos\(crudo\.favoritos\)/.test(fuente) &&
-    /CONSULTA = 'query[^']*favourites/.test(fuente) &&
+    fuente.includes('calcularRarezaScore(') &&
+    fuente.includes('rarezaDesdeScore(') &&
+    /meanScore|popularity|seasonYear/.test(fuente) &&
     !fuente.includes('RANGOS_POR_RAREZA') &&
     !fuente.includes('enBanda(')
   ) {
-    ok('la tirada usa la misma banda de favoritos que .serielist/.serieinfo')
+    ok('la tirada usa el score compuesto de rareza con datos de AniList')
   } else {
-    mal('la tirada no usa rarezaDeFavoritos o conserva bandas solapadas')
+    mal('la tirada no usa el score compuesto o conserva bandas solapadas')
+  }
+
+  if (
+    fuente.includes('characters(search: $search, sort: SEARCH_MATCH)') &&
+    fuente.includes('elegirCandidato(') &&
+    fuente.includes('nombreParaAniList(') &&
+    fuente.includes('buscarEnAniList(fila.nombre, fila.anime)')
+  ) {
+    ok('la busqueda por nombre usa candidatos de AniList y desempata con la serie')
+  } else {
+    mal('la busqueda por nombre no usa Page.characters o no pasa la serie')
+  }
+
+  if (
+    anilist.nombreParaAniList('Darwis') === 'Darkness' &&
+    anilist.nombreParaAniList('Rocksmith') === 'Xebec Rocks' &&
+    anilist.nombreParaAniList('Whitebeard') === 'Newgate Edward' &&
+    anilist.nombreParaAniList('Levi') === 'Levi' &&
+    anilist.FIJOS_ANILIST?.kaido === 46109
+  ) {
+    ok('los alias y las fichas fijas del catalogo se traducen al nombre real de AniList')
+  } else {
+    mal('los alias de AniList no se aplican', JSON.stringify(anilist.ALIAS_ANILIST))
+  }
+
+  const terminos = anilist.terminosDeBusqueda('Monkey D. Luffy') || []
+  if (
+    terminos[0] === 'Monkey D. Luffy' &&
+    terminos.includes('luffy') &&
+    terminos.includes('monkey') &&
+    anilist.terminosDeBusqueda('Darwis')[0] === 'Darkness' &&
+    anilist.terminosDeBusqueda('L')[0] === 'L Lawliet'
+  ) {
+    ok('la busqueda prueba el nombre completo y luego sus palabras')
+  } else {
+    mal('terminosDeBusqueda no genera las variantes', JSON.stringify(terminos))
+  }
+
+  const sukuna = anilist.elegirCandidato(
+    'Ryomen Sukuna',
+    [
+      { nombre: 'Sukuna', favoritos: 11929, animes: ['Jujutsu Kaisen'] },
+      { nombre: 'Sukuna Gojou', favoritos: 41, animes: ['Otro anime'] },
+      { nombre: 'Yuuji Itadori', favoritos: 21238, animes: ['Jujutsu Kaisen'] },
+    ],
+    'Jujutsu Kaisen',
+  )
+  const lelouch = anilist.elegirCandidato(
+    'Lelouch vi Britannia',
+    [{ nombre: 'Lelouch Lamperouge', favoritos: 28242, animes: ['Code Geass: Hangyaku no Lelouch'] }],
+    'Code Geass',
+  )
+  const patrick = anilist.elegirCandidato(
+    'Patrick Star',
+    [{ nombre: 'Patrick Ashbatten', favoritos: 182, animes: ['Akuyaku Reijou Level 99'] }],
+    'SpongeBob',
+  )
+  const ezio = anilist.elegirCandidato(
+    'Ezio Auditore',
+    [{ nombre: 'Chloe Auditore', favoritos: 16, animes: [] }],
+    'Assassins Creed',
+  )
+  if (
+    sukuna?.candidato?.nombre === 'Sukuna' &&
+    lelouch?.candidato?.nombre === 'Lelouch Lamperouge' &&
+    patrick === null &&
+    ezio === null &&
+    anilist.puntuarCandidato('Sukuna', { nombre: 'Sukuna' }) === 100
+  ) {
+    ok('elegirCandidato resuelve Ryomen Sukuna y Lelouch y rechaza homonimos de otra serie')
+  } else {
+    mal(
+      'elegirCandidato empareja mal',
+      JSON.stringify({ sukuna, lelouch, patrick, ezio }),
+    )
   }
 
   const gachaFuente = leer('commands/gacha.js')
@@ -904,9 +980,11 @@ seccion('Rarezas del gacha')
     sincroFuente.includes('planRarezas(filas, indice)') &&
     sincroFuente.includes('actualizarRarezaPersonaje(') &&
     sincroFuente.includes('guardarAjuste(CLAVE_SYNC') &&
-    sincroFuente.includes('internetApagada()')
+    sincroFuente.includes('internetApagada()') &&
+    sincroFuente.includes('duplicados') &&
+    sincroFuente.includes('sinDatos')
   ) {
-    ok('la sincronizacion reescribe rareza, valor y favoritos del catalogo')
+    ok('la sincronizacion reescribe rareza, valor y favoritos y avisa de duplicados y filas sin datos')
   } else {
     mal('sincronizarRarezas no esta cableada o no respeta el modo sin red')
   }
