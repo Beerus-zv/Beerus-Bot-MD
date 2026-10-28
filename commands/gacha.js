@@ -46,39 +46,55 @@ import {
 import { datosRareza, formatearFicha, estadoVisible, RAREZAS } from '../lib/gacha.js'
 import { enviarCartaPersonaje } from '../lib/imagenes.js'
 import { nombreLegible, recargaActiva } from '../lib/economia.js'
-import { buscarOImportar, tirarDeInternet } from '../lib/gacha-internet.js'
+import { PERSONAJES_POR_SERIE, SERIES_POR_PAGINA } from '../lib/anilist.js'
+import { buscarOImportar, completarPersonajesSeries, personajesDeSerieInternet, listarSeriesInternet, sincronizarRarezas, tirarDeInternet } from '../lib/gacha-internet.js'
 import { elegirRareza } from '../lib/gacha.js'
-import { asegurarOwnerVip } from '../lib/owner.js'
+import { asegurarOwnerVip, esOwnerMsg } from '../lib/owner.js'
 
-const AYUDA = `💞 *Waifu · el gacha unificando todo*
+const AYUDA = `💞 *Gacha anime*
+
+_Tira cartas, reclama personajes y haz crecer tu coleccion._
 
 *Uso:*
-• \`/gacha random <rareza>\` - Waifu aleatoria (el nuevo gacha roll)
-• \`.c\` - Reclamar la waifu random del chat (todos)
-• \`/gacha claim <nombre>\` - Reclamar (VIP, 1 vez/mes)
-• \`/gacha collection\` - Ver tu colección
-• \`/gacha info <nombre>\` - Ficha de un personaje
-• \`/gacha image <nombre>\` - Ver la imagen de un personaje
-• \`/gacha video <nombre>\` - Ver el video de un personaje
-• \`/gacha stats\` - Tus estadísticas
-• \`/gacha claimmsg <texto>\` - Tu mensaje al reclamar (vacío: borrarlo)
-• \`/gacha give @user <nombre>\` - Regalar un personaje
-• \`/gacha giveallgacha @user\` - Regalar todos tus personajes
-• \`/gacha trade @user <tuPJ> <suPJ>\` - Intercambiar personajes
-• \`/gacha sell <precio> <nombre>\` - Poner un personaje en venta
-• \`/gacha removesale <nombre>\` - Quitar un personaje de la venta
-• \`/gacha shop\` - Ver los personajes en venta
-• \`/gacha buy <nombre>\` - Comprar un personaje en venta
-• \`/gacha vote <nombre>\` - Votar por un personaje
-• \`/gacha fav <nombre>\` - Marcar favorito
-• \`/gacha deletegacha <nombre>\` - Soltar un personaje
+• \`.gacha\` · \`.gc\` - Tirar un personaje al azar
+• \`.gacha random <rareza>\` - Tirada de una rareza concreta
+• \`.gacha help\` - Ver esta ayuda
+• \`.c\` - Reclamar la carta random del chat (todos)
+• \`.gacha claim <nombre>\` - Reclamar (VIP, 1 vez/mes)
+• \`.gacha collection\` - Ver tu colección
+• \`.gacha info <nombre>\` - Ficha de un personaje
+• \`.gacha image <nombre>\` - Ver la imagen de un personaje
+• \`.gacha video <nombre>\` - Ver el video de un personaje
+• \`.gacha stats\` - Tus estadísticas
+• \`.gacha claimmsg <texto>\` - Tu mensaje al reclamar (vacío: borrarlo)
+• \`.gacha give @user <nombre>\` - Regalar un personaje
+• \`.gacha giveallgacha @user\` - Regalar todos tus personajes
+• \`.gacha trade @user <tuPJ> <suPJ>\` - Intercambiar personajes
+• \`.gacha sell <precio> <nombre>\` - Poner un personaje en venta
+• \`.gacha removesale <nombre>\` - Quitar un personaje de la venta
+• \`.gacha shop\` - Ver los personajes en venta
+• \`.gacha buy <nombre>\` - Comprar un personaje en venta
+• \`.gacha vote <nombre>\` - Votar por un personaje
+• \`.gacha fav <nombre>\` - Marcar favorito
+• \`.gacha deletegacha <nombre>\` - Soltar un personaje
+
+*Series (internet):*
+• \`.serielist [página]\` - Series de anime por popularidad (AniList)
+• \`.serieinfo <serie>\` - Personajes de esa serie y su rareza
+
+*Rarezas (favoritos en AniList):*
+• Mítico ≥15.000 · Legendario ≥8.000 · Épico ≥2.500 · Raro ≥750 · Común <750
+
+*Mantenimiento (owner):*
+• \`.gacha sync\` - Recalcular las rarezas del catálogo desde AniList
 
 *Admin:*
-• \`/gacha on | off\` - Activar/apagar el gacha en el grupo
-• \`/gacha add <nombre> <anime> <rareza> [url] [F|M]\` - Añadir personaje
-• \`/gacha setimage <id> <url>\` - Poner imagen a un personaje
-• \`/gacha setvideo <id> <url>\` - Poner video a un personaje
-• \`/gacha setgender <id> <F|M>\` - Poner género a un personaje
+• \`.gacha on | off\` - Activar/apagar el gacha en el grupo
+• \`.gacha add <nombre> <anime> <rareza> [url] [F|M]\` - Añadir personaje
+• \`.setcardimage <nombre|id> [url]\` - Cambiar la imagen de una carta (\`.sci\`, respondiendo a una foto)
+• \`.gacha setimage <id> <url>\` - Poner imagen a un personaje
+• \`.gacha setvideo <id> <url>\` - Poner video a un personaje
+• \`.gacha setgender <id> <F|M>\` - Poner género a un personaje
 
 *Rarezas:* ⚪ Comun · 🔵 Raro · 🟣 Epico · 🟡 Legendario · 🔴 Mitico`
 
@@ -147,14 +163,19 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
   const resto = args.slice(1)
   const quien = sender || jid
 
+  // ───────────── Ayuda ─────────────
+  if (sub === 'help' || sub === 'ayuda' || sub === 'comandos') {
+    await sock.sendMessage(jid, { text: AYUDA, quoted: msg })
+    return
+  }
+
   // ───────────── Reclamar ─────────────
   if (sub === 'claim' || sub === 'reclamar') {
     // Vincula el JID actual del owner (aunque sea @lid) a la tabla vip
     asegurarOwnerVip(db, { sock, msg, sender })
-    // Solo VIP (el owner tambien)
-    const vipRow = db.prepare('SELECT * FROM vip WHERE jid = ?').get(quien)
-    if (!vipRow || !['vip', 'owner'].includes(vipRow.rango)) {
-      await sock.sendMessage(jid, { text: '❌ Solo usuarios VIP pueden usar `/gacha claim`.\nUsa `.vipbadge` para verificar tu rango.', quoted: msg })
+    // Solo VIP (el owner tambien), aceptando PN, LID o sufijo de dispositivo
+    if (!esVip(jidsDe({ msg, sender: quien, sock }))) {
+      await sock.sendMessage(jid, { text: '❌ Solo usuarios VIP pueden usar `/gacha claim`.\nPide acceso con `.vip add @usuario` (owner).', quoted: msg })
       return
     }
     // Cooldown mensual (30 días)
@@ -672,15 +693,76 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
   if (sub === 'serielist' || sub === 'slist' || sub === 'animelist') {
     if (await enRecarga(sock, jid, msg, quien, 'serielist')) return
 
+    const pedida = Math.trunc(Number(resto[0]))
+    const paginaPedida = Number.isFinite(pedida) && pedida > 0 ? pedida : 1
+
+    // 1) La lista sale de la misma fuente que las tiradas (AniList)
+    const internet = await listarSeriesInternet(paginaPedida)
+    if (internet) {
+      // Numero real de personajes (MyAnimeList, cache 24 h)
+      await completarPersonajesSeries(internet.series)
+
+      const { series, pagina, paginas, total } = internet
+      const desde = (pagina - 1) * SERIES_POR_PAGINA
+      const lineas = series.map((s, i) => {
+        const anio = s.anio ? ` (${s.anio})` : ''
+        const cuantos = Number.isFinite(s.personajes)
+          ? ` — ${s.personajes} ${s.personajes === 1 ? 'personaje' : 'personajes'}`
+          : ''
+        const favs = s.favoritos ? ` · ${s.favoritos.toLocaleString('es-ES')} ⭐` : ''
+        return `${desde + i + 1}. *${s.titulo}*${anio}${cuantos}${favs}`
+      })
+      const siguiente = pagina < paginas ? pagina + 1 : 1
+      const rango = `${desde + 1}-${desde + series.length} de ${total}`
+
+      await sock.sendMessage(jid, {
+        text:
+          `📺 *Series de anime* (${rango})\n` +
+          `_Fuente: AniList · personajes: MyAnimeList._\n\n` +
+          `${lineas.join('\n')}\n\n` +
+          (paginas > 1
+            ? `_Página ${pagina}/${paginas} · siguiente:_ \`.serielist ${siguiente}\`\n`
+            : '') +
+          `_Abre una con_ \`.serieinfo <serie>\`_._`,
+        quoted: msg,
+      })
+      marcarUso(quien, 'serielist')
+      return
+    }
+
+    // 2) Sin internet: catalogo local
     const series = listarAnimesGacha()
     if (!series.length) {
       await sock.sendMessage(jid, { text: '❌ El catálogo está vacío.', quoted: msg })
       return
     }
 
-    const lineas = series.map((s) => `• *${s.anime}* — ${s.personajes} personajes`)
+    // Son muchas series: se pagina para que quepan en un mensaje
+    const POR_PAGINA = 30
+    const paginas = Math.max(1, Math.ceil(series.length / POR_PAGINA))
+    const pagina = Number.isFinite(pedida) && pedida > 0 ? Math.min(pedida, paginas) : 1
+    const desde = (pagina - 1) * POR_PAGINA
+    const trozo = series.slice(desde, desde + POR_PAGINA)
+
+    const lineas = trozo.map((s, i) => {
+      const n = s.personajes
+      return `${desde + i + 1}. *${s.anime}* — ${n} ${n === 1 ? 'personaje' : 'personajes'}`
+    })
+
+    const siguiente = pagina < paginas ? pagina + 1 : 1
+    const pie =
+      paginas > 1
+        ? `\n\n_Página ${pagina}/${paginas} · siguiente:_ \`.serielist ${siguiente}\``
+        : ''
+    const rango = paginas > 1 ? ` (${desde + 1}-${desde + trozo.length} de ${series.length})` : ` (${series.length})`
+
     await sock.sendMessage(jid, {
-      text: `📺 *Series del catálogo*\n\n${lineas.join('\n')}`,
+      text:
+        `📺 *Series del catálogo*${rango}\n` +
+        `_Sin internet: solo lo ya tirado._\n\n` +
+        `${lineas.join('\n')}\n\n` +
+        `_Abre una con_ \`.serieinfo <serie>\`_._` +
+        pie,
       quoted: msg,
     })
     marcarUso(quien, 'serielist')
@@ -691,28 +773,90 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
   if (sub === 'serieinfo' || sub === 'ainfo' || sub === 'animeinfo') {
     if (await enRecarga(sock, jid, msg, quien, 'serieinfo')) return
 
-    const nombre = resto.join(' ').trim().toLowerCase()
+    const nombre = resto.join(' ').trim()
     if (!nombre) {
-      await sock.sendMessage(jid, { text: '❓ Uso: `/gacha serieinfo <nombre de la serie>`', quoted: msg })
+      await sock.sendMessage(jid, {
+        text: '❓ Uso: `.serieinfo <serie>`\n_Mira las series con_ `.serielist`_.',
+        quoted: msg,
+      })
       return
     }
 
-    const personajes = listarPersonajesGacha().filter((p) =>
-      String(p.anime || '').toLowerCase().includes(nombre)
-    )
+    // 1) La ficha sale de la misma fuente que las tiradas (AniList)
+    const internet = await personajesDeSerieInternet(nombre)
+    if (internet) {
+      const { serie, personajes, total } = internet
+      const MAX = PERSONAJES_POR_SERIE
+      const lineas = personajes.slice(0, MAX).map((p) => {
+        const r = datosRareza(p.rareza)
+        return `${r.emoji} *${p.nombre}* — ${r.etiqueta} · ${p.favoritos.toLocaleString('es-ES')} ⭐`
+      })
+      const sobran = Math.max(0, total - lineas.length)
+      const anio = serie.anio ? ` (${serie.anio})` : ''
 
-    if (!personajes.length) {
-      await sock.sendMessage(jid, { text: `❌ No encontré la serie *${nombre}*.`, quoted: msg })
+      await sock.sendMessage(jid, {
+        text:
+          `📺 *${serie.titulo}*${anio} · ${total} ` +
+          `${total === 1 ? 'personaje' : 'personajes'}\n` +
+          `_Fuente: AniList · ${serie.favoritos.toLocaleString('es-ES')} ⭐_\n\n` +
+          `${lineas.join('\n')}` +
+          (sobran > 0 ? `\n\n_...y ${sobran} más._` : '') +
+          `\n\n_Tirada con_ \`.gacha random\` _y ficha con_ \`.gacha info <nombre>\`_._`,
+        quoted: msg,
+      })
+      marcarUso(quien, 'serieinfo')
       return
     }
 
-    const lineas = personajes.map((p) => {
+    // 2) Sin internet: catalogo local
+    const buscar = nombre.toLowerCase()
+    const series = listarAnimesGacha()
+    const exacta = series.find((s) => s.anime.toLowerCase() === buscar)
+    const parciales = series.filter((s) => s.anime.toLowerCase().includes(buscar))
+
+    if (!exacta && parciales.length > 1) {
+      // Varias series contienen el texto: que elija una
+      const opciones = parciales.slice(0, 12).map((s) => `• *${s.anime}* (${s.personajes})`)
+      const restoOpciones =
+        parciales.length > opciones.length ? `\n_...y ${parciales.length - opciones.length} más._` : ''
+      await sock.sendMessage(jid, {
+        text:
+          `🔎 *${nombre}* coincide con ${parciales.length} series:\n\n` +
+          `${opciones.join('\n')}${restoOpciones}\n\n` +
+          `_Escribe el nombre completo:_ \`.serieinfo ${parciales[0].anime}\`_._`,
+        quoted: msg,
+      })
+      return
+    }
+
+    const elegida = exacta || parciales[0]
+    if (!elegida) {
+      await sock.sendMessage(jid, {
+        text: `❌ No encontré la serie *${nombre}*.\n_Mira las series con_ \`.serielist\`_.`,
+        quoted: msg,
+      })
+      return
+    }
+
+    // Personajes de esa serie, del más valioso al menos
+    const personajes = listarPersonajesGacha()
+      .filter((p) => String(p.anime || '').toLowerCase() === elegida.anime.toLowerCase())
+      .sort((a, b) => (Number(b.valor) || 0) - (Number(a.valor) || 0))
+
+    const MAX = 40
+    const lineas = personajes.slice(0, MAX).map((p) => {
       const r = datosRareza(p.rareza)
       return `${r.emoji} *${p.nombre}* — ${r.etiqueta} · ${p.valor} 🪙`
     })
+    const sobran = personajes.length - lineas.length
 
     await sock.sendMessage(jid, {
-      text: `📺 *${personajes[0].anime}* (${personajes.length} personajes)\n\n${lineas.join('\n')}`,
+      text:
+        `📺 *${elegida.anime}* · ${personajes.length} ` +
+        `${personajes.length === 1 ? 'personaje' : 'personajes'}\n\n` +
+        `${lineas.join('\n')}` +
+        (sobran > 0 ? `\n\n_...y ${sobran} más._` : '') +
+        `\n\n_Ficha con_ \`.gacha info <nombre>\`_._`,
       quoted: msg,
     })
     marcarUso(quien, 'serieinfo')
@@ -787,11 +931,14 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
     }
 
     // La tirada se hace directo de internet (AniList) y si el personaje no
-    // esta en el catalogo se importa al vuelo, con la rareza salida.
+    // esta en el catalogo se importa al vuelo. La rareza sale siempre de sus
+    // favoritos (misma banda que .serielist/.serieinfo).
     const rarezaBuscada = filtro || elegirRareza()
     let personaje = null
     try {
       personaje = await tirarDeInternet(rarezaBuscada)
+      // La red responde pero esa banda no dio nada: tirada libre online
+      if (!personaje && !filtro) personaje = await tirarDeInternet()
     } catch {
       personaje = null
     }
@@ -937,6 +1084,42 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
       quoted: msg,
     })
     marcarUso(quien, 'gstats')
+    return
+  }
+
+  // ───────────── Sincronizar rarezas con AniList (owner) ─────────────
+  if (sub === 'sync' || sub === 'syncrareza' || sub === 'syncrarities') {
+    if (!esOwnerMsg({ msg, sender, sock })) {
+      await sock.sendMessage(jid, {
+        text: '⛔ Solo el *owner* puede sincronizar las rarezas del gacha.',
+        quoted: msg,
+      })
+      return
+    }
+
+    await sock.sendMessage(jid, {
+      text: '⏳ Recalculando rarezas desde AniList...\n_Puede tardar unos minutos._',
+      quoted: msg,
+    })
+
+    const resultado = await sincronizarRarezas({ forzar: true })
+    if (!resultado) {
+      await sock.sendMessage(jid, {
+        text: '❌ Sin internet: no se pudo sincronizar. Inténtalo más tarde.',
+        quoted: msg,
+      })
+      return
+    }
+
+    await sock.sendMessage(jid, {
+      text:
+        `✅ *Rarezas sincronizadas*\n\n` +
+        `📄 Páginas leídas: *${resultado.paginas}*\n` +
+        `🗂️ Personajes en catálogo: *${resultado.revisados}*\n` +
+        `🔎 Encontrados en AniList: *${resultado.encontrados}*\n` +
+        `🔄 Rarezas corregidas: *${resultado.actualizados}*`,
+      quoted: msg,
+    })
     return
   }
 

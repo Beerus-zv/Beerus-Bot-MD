@@ -20,28 +20,16 @@ import { revisarAntilink } from './lib/antilink.js'
 import { procesarCambioParticipantes } from './lib/bienvenida.js'
 import { alertaAdmin } from './lib/alertas.js'
 import { obtenerAvatarBeerus } from './lib/avatar.js'
+import { sincronizarBanners } from './lib/banners-menu.js'
+import { sincronizarRarezas } from './lib/gacha-internet.js'
 import { adquirirBloqueo, liberarBloqueo } from './lib/instancia.js'
+import { cargarComandos } from './lib/loader.js'
+import { COMANDOS_VIP, esVip, jidsDe } from './lib/vip.js'
 
 // ───────────── Configuración ─────────────
 import { BOT_NAME, PREFIX, AUTH_DIR, MENCIONES_BOT, LOG_LEVEL, METODO_VINCULACION, NUMERO_VINCULACION, NAVEGADOR_WA } from './config.js'
 import { elegirVinculacion, formatearCodigo } from './lib/vinculacion.js'
 
-import antidelete from './commands/antidelete.js'
-import antispam from './commands/antispam.js'
-import autodetectCmd from './commands/autodetect.js'
-import fantasmas from './commands/fantasmas.js'
-import dado from './commands/dado.js'
-import inspect from './commands/inspect.js'
-import cleartmp from './commands/cleartmp.js'
-import vip from './commands/vip.js'
-import vipbadge from './commands/vipbadge.js'
-import vipmenu from './commands/vipmenu.js'
-import vipboost from './commands/vipboost.js'
-import update from './commands/update.js'  // NUEVO
-import dona from './commands/dona.js'
-import gachaclaim from './commands/gachaclaim.js'
-import reclamarRandom from './commands/c.js'
-import autodetect from './commands/autodetect.js'
 
 const logger = pino({ level: LOG_LEVEL }) // cambia a 'info' o 'debug' para depurar
 
@@ -49,152 +37,66 @@ const logger = pino({ level: LOG_LEVEL }) // cambia a 'info' o 'debug' para depu
 const mensajeCache = new Map()
 // Tiempo de vida del mensaje en la cache (ms) - 5 minutos
 const TIEMPO_VIDA_MENSAJE = 300000
+// Tope de entradas: evita que la cache crezca sin limite con el trafico
+const MAX_CACHE_MENSAJES = 2000
+// Mensajes del mismo lote que se procesan a la vez (una descarga lenta no frena al resto)
+const MAX_MENSAJES_EN_PARALELO = 5
+
+/** Guarda un mensaje en la cache respetando el tope (descarta el mas antiguo) */
+function guardarEnCache(id, datos) {
+  mensajeCache.set(id, datos)
+  while (mensajeCache.size > MAX_CACHE_MENSAJES) {
+    mensajeCache.delete(mensajeCache.keys().next().value)
+  }
+}
+
+/**
+ * Ejecuta fn sobre cada item con un maximo de tareas simultaneas.
+ * Sustituye al `for ... await` del handler: antes un solo comando lento
+ * (una descarga de YouTube, por ejemplo) bloqueaba todos los mensajes.
+ */
+async function mapConLimite(items, limite, fn) {
+  const cola = [...items]
+  const trabajadores = Array.from({ length: Math.min(limite, cola.length) }, async () => {
+    while (cola.length) {
+      const item = cola.shift()
+      try {
+        await fn(item)
+      } catch (err) {
+        log.error('Error procesando un mensaje', err)
+      }
+    }
+  })
+  await Promise.all(trabajadores)
+}
+
+// ───────────── Purga de antispam ─────────────
+let ultimaPurgaSpam = 0
+
+/** Borra del antispam en memoria los usuarios inactivos (evita fuga de memoria) */
+function purgarSpam(datos) {
+  const ahora = Date.now()
+  if (ahora - ultimaPurgaSpam < 60_000) return
+  ultimaPurgaSpam = ahora
+  for (const [id, d] of Object.entries(datos)) {
+    if (ahora - (d.last || 0) > 10 * 60_000) delete datos[id]
+  }
+}
+
 
 // ───────────── Comandos ─────────────
-import greet from './commands/greet.js'
-import ping from './commands/ping.js'
-import menu from './commands/menu.js'
-import info from './commands/info.js'
-import stats from './commands/stats.js'
-import stickers from './commands/stickers.js'
-import help from './commands/help.js'
-import profile from './commands/profile.js'
-import notes from './commands/notes.js'
-import group from './commands/group.js'
-import listgroups from './commands/listgroups.js'
-import leave from './commands/leave.js'
-import creategroup from './commands/creategroup.js'
-import promote from './commands/promote.js'
-import demote from './commands/demote.js'
-import ban from './commands/ban.js'
-import unban from './commands/unban.js'
-import kick from './commands/kick.js'
-import add from './commands/add.js'
-import listadmins from './commands/listadmins.js'
-import listmembers from './commands/listmembers.js'
-import groupinfo from './commands/groupinfo.js'
-import invite from './commands/invite.js'
-import resetlink from './commands/resetlink.js'
-import mute from './commands/mute.js'
-import restrict from './commands/restrict.js'
-import systemcmd from './commands/system.js'
-import requests from './commands/requests.js'
-import approve from './commands/approve.js'
-import reject from './commands/reject.js'
-import setname from './commands/setname.js'
-import setdesc from './commands/setdesc.js'
-import ephemeral from './commands/ephemeral.js'
-import history from './commands/history.js'
-import video from './commands/video.js'
-import audio from './commands/audio.js'
-import sticker from './commands/sticker.js'
-import stickervideo from './commands/stickervideo.js'
-import antilink from './commands/antilink.js'
-import economy from './commands/economy.js'
-import casino from './commands/casino.js'
-import eightball from './commands/8ball.js'
-import truthordare from './commands/truthordare.js'
-import joke from './commands/joke.js'
-import quote from './commands/quote.js'
-import advice from './commands/advice.js'
-import compliment from './commands/compliment.js'
-import pickup from './commands/pickup.js'
-import ship from './commands/ship.js'
-import love from './commands/love.js'
-import buscar from './commands/buscar.js'
-import youtube from './commands/youtube.js'
-import wiki from './commands/wiki.js'
-import clima from './commands/clima.js'
-import traducir from './commands/traducir.js'
-import leerurl from './commands/leerurl.js'
-import welcome from './commands/welcome.js'
-import bye from './commands/bye.js'
-import gachaCmd from './commands/gacha.js'
-import uno from './commands/uno.js'
-import adivinar from './commands/adivinar.js'
-import acertijo from './commands/acertijo.js'
-import sopa from './commands/sopa.js'
-import ahorcado from './commands/ahorcado.js'
-import calcular from './commands/calcular.js'
-import estilizar from './commands/estilizar.js'
-import qr from './commands/qr.js'
-import hidetag from './commands/hidetag.js'
-import advertencia from './commands/advertencia.js'
-import warnwords from './commands/warnwords.js'
-import afk from './commands/afk.js'
-import descargar from './commands/descargar.js'
-import tiktok from './commands/tiktok.js'
-import igstory from './commands/igstory.js'
-import tiktoksearch from './commands/tiktoksearch.js'
-import spotifysearch from './commands/spotifysearch.js'
-import cuevana from './commands/cuevana.js'
-import dalle from './commands/dalle.js'
-import remini from './commands/remini.js'
-import anonimo from './commands/anonimo.js'
-import facebook from './commands/facebook.js'
-import instagram from './commands/instagram.js'
-import mediafire from './commands/mediafire.js'
-import twitter from './commands/twitter.js'
-import pinterest from './commands/pinterest.js'
-import pixiv from './commands/pixiv.js'
-import nhentai from './commands/nhentai.js'
-import hitomi from './commands/hitomi.js'
-import vermangasporno from './commands/vermangasporno.js'
 
 // Modos por chat y administracion (lote Administracion)
-import modos, { fabricarModo } from './commands/modos.js'
-import autoreact from './commands/autoreact.js'
-import msgcount from './commands/msgcount.js'
-import topinactive from './commands/topinactive.js'
-import groupimage from './commands/groupimage.js'
-import setwarnlimit from './commands/setwarnlimit.js'
+import { fabricarModo } from './commands/modos.js'
 
 // ───────────── ComandosTomados de MEGA-MD ─────────────
-import encuesta from './commands/encuesta.js'
-import reaccionar from './commands/reaccionar.js'
-import revelar from './commands/revelar.js'
-import efecto from './commands/efecto.js'
-import tateti from './commands/tateti.js'
-import hack from './commands/hack.js'
-import curiosidad from './commands/curiosidad.js'
-import voz from './commands/voz.js'
-import pokedex from './commands/pokedex.js'
-import gitinfo from './commands/gitinfo.js'
-import npminfo from './commands/npm.js'
-import ip from './commands/ip.js'
-import acortar from './commands/acortar.js'
-import letra from './commands/letra.js'
-import chatIA, { charlarConBeerus } from './commands/ia.js'
-import chatgpt from './commands/chatgpt.js'
-import gemini from './commands/gemini.js'
-import interaccion, { fabricarInteraccion } from './commands/interaccion.js'
+import { charlarConBeerus } from './commands/ia.js'
+import { fabricarInteraccion } from './commands/interaccion.js'
 // ── Lote Neko: banco, sociales y utilidades ──
-import deposit from './commands/deposit.js'
-import withdraw from './commands/withdraw.js'
-import crime from './commands/crime.js'
-import roulette from './commands/roulette.js'
-import topcount from './commands/topcount.js'
-import marry from './commands/marry.js'
-import divorce from './commands/divorce.js'
-import aceptar from './commands/aceptar.js'
-import pareja from './commands/pareja.js'
-import setbirth from './commands/setbirth.js'
-import birthdays from './commands/birthdays.js'
 
 // Lote Perfiles (Neko): ficha, nivel y favoritos
-import setgenre from './commands/setgenre.js'
-import setdescription from './commands/setdescription.js'
-import setfavourite from './commands/setfavourite.js'
-import level from './commands/level.js'
-import leaderboard from './commands/leaderboard.js'
-import allbirthdays from './commands/allbirthdays.js'
-import marryhistory from './commands/marryhistory.js'
-import toimg from './commands/toimg.js'
-import pfp from './commands/pfp.js'
-import nsfwcmd from './commands/nsfw.js'
-import rule34, { fabricarBusquedaNSFW } from './commands/rule34.js'
-import hentai from './commands/hentai.js'
-import nsfwInteraccion, {
+import { fabricarBusquedaNSFW } from './commands/rule34.js'
+import {
   fabricarAccionNSFW,
   fabricarImagenNSFW,
 } from './commands/nsfw-interaccion.js'
@@ -275,128 +177,129 @@ const e621 = fabricarBusquedaNSFW('e621.net')
 /** Crea un alias que ejecuta un subcomando de economy */
 const conSub = (fn, sub) => (ctx) => fn({ ...ctx, args: [sub, ...(ctx.args || [])] })
 
+// Registro dinamico: cada archivo de commands/ se expone por su nombre
+const C = await cargarComandos()
+
 const commands = {
-  greet,
-  ping,
-  menu,
-  info,
-  stats,
-  stickers,
-  help,
-  dado,
-  profile,
-  notes,
-  group,
-  listgroups,
-  leave,
-  creategroup,
-  promote,
-  demote,
-  ban,
-  unban,
-  kick,
-  add,
-  listadmins,
-  listmembers,
-  antidelete,
-  antispam,
-  autodetect: autodetectCmd,
-  fantasmas,
-  dado,
-  dados: dado,
-  dadu: dado,
-  inspect,
-  cleartmp,
-  groupinfo,
-  invite,
-  resetlink,
-  mute,
-  restrict,
-  system: systemcmd,
-  update,
-  requests,
-  approve,
-  reject,
-  setname,
-  setdesc,
-  ephemeral,
-  history,
-  video,
-  audio,
-  sticker,
-  stickervideo,
-  antilink,
+  greet: C.greet,
+  ping: C.ping,
+  menu: C.menu,
+  info: C.info,
+  stats: C.stats,
+  stickers: C.stickers,
+  help: C.help,
+  dado: C.dado,
+  profile: C.profile,
+  notes: C.notes,
+  group: C.group,
+  listgroups: C.listgroups,
+  leave: C.leave,
+  creategroup: C.creategroup,
+  promote: C.promote,
+  demote: C.demote,
+  ban: C.ban,
+  unban: C.unban,
+  kick: C.kick,
+  add: C.add,
+  listadmins: C.listadmins,
+  listmembers: C.listmembers,
+  antidelete: C.antidelete,
+  antispam: C.antispam,
+  autodetect: C.autodetect,
+  fantasmas: C.fantasmas,
+  dados: C.dado,
+  dadu: C.dado,
+  inspect: C.inspect,
+  cleartmp: C.cleartmp,
+  groupinfo: C.groupinfo,
+  invite: C.invite,
+  resetlink: C.resetlink,
+  mute: C.mute,
+  restrict: C.restrict,
+  system: C.system,
+  update: C.update,
+  requests: C.requests,
+  approve: C.approve,
+  reject: C.reject,
+  setname: C.setname,
+  setdesc: C.setdesc,
+  ephemeral: C.ephemeral,
+  history: C.history,
+  video: C.video,
+  audio: C.audio,
+  sticker: C.sticker,
+  stickervideo: C.stickervideo,
+  antilink: C.antilink,
   // ── Economía y entretenimiento ──
-  gacha: gachaCmd,
-  gacha: gachaCmd,
-  uno,
-  economy,
-  casino,
-  '8ball': eightball,
-  truthordare,
-  joke,
-  quote,
-  advice,
-  compliment,
-  pickup,
-  ship,
-  love,
+  gacha: C.gacha,
+  uno: C.uno,
+  economy: C.economy,
+  casino: C.casino,
+  '8ball': C["8ball"],
+  truthordare: C.truthordare,
+  joke: C.joke,
+  quote: C.quote,
+  advice: C.advice,
+  compliment: C.compliment,
+  pickup: C.pickup,
+  ship: C.ship,
+  love: C.love,
   // ── Internet ──
-  buscar,
-  youtube,
-  wiki,
-  clima,
-  traducir,
-  leerurl,
+  buscar: C.buscar,
+  youtube: C.youtube,
+  wiki: C.wiki,
+  clima: C.clima,
+  traducir: C.traducir,
+  leerurl: C.leerurl,
   // ── Bienvenidas y despedidas ──
-  welcome,
-  bye,
+  welcome: C.welcome,
+  bye: C.bye,
   // ── Juegos y utilidades nuevas ──
-  adivinar,
-  acertijo,
-  sopa,
-  ahorcado,
-  calcular,
-  estilizar,
-  qr,
-  hidetag,
-  advertencia,
-  warnwords,
-  afk,
+  adivinar: C.adivinar,
+  acertijo: C.acertijo,
+  sopa: C.sopa,
+  ahorcado: C.ahorcado,
+  calcular: C.calcular,
+  estilizar: C.estilizar,
+  qr: C.qr,
+  hidetag: C.hidetag,
+  advertencia: C.advertencia,
+  warnwords: C.warnwords,
+  afk: C.afk,
   // ── Descargas de internet ──
-  descargar,
-  tiktok,
-  facebook,
-  instagram,
-  mediafire,
-  twitter,
+  descargar: C.descargar,
+  tiktok: C.tiktok,
+  facebook: C.facebook,
+  instagram: C.instagram,
+  mediafire: C.mediafire,
+  twitter: C.twitter,
   // ── Lote Neko: descargas ──
-  pixiv,
-  pinterest,
-  nhentai,
-  hitomi,
-  vermangasporno,
+  pixiv: C.pixiv,
+  pinterest: C.pinterest,
+  nhentai: C.nhentai,
+  hitomi: C.hitomi,
+  vermangasporno: C.vermangasporno,
   // ── Novedades de MEGA-MD ──
-  encuesta,
-  reaccionar,
-  revelar,
-  efecto,
-  tateti,
-  hack,
-  curiosidad,
-  voz,
-  pokedex,
-  gitinfo,
-  npm: npminfo,
-  ip,
-  acortar,
-  letra,
+  encuesta: C.encuesta,
+  reaccionar: C.reaccionar,
+  revelar: C.revelar,
+  efecto: C.efecto,
+  tateti: C.tateti,
+  hack: C.hack,
+  curiosidad: C.curiosidad,
+  voz: C.voz,
+  pokedex: C.pokedex,
+  gitinfo: C.gitinfo,
+  npm: C.npm,
+  ip: C.ip,
+  acortar: C.acortar,
+  letra: C.letra,
   // ── IA de Beerus ──
-  ia: chatIA,
-  chatgpt,
-  gemini,
+  ia: C.ia,
+  chatgpt: C.chatgpt,
+  gemini: C.gemini,
   // ── Interacciones anime entre usuarios ──
-  interaccion,
+  interaccion: C.interaccion,
   kiss,
   hug,
   slap,
@@ -419,27 +322,27 @@ const commands = {
   facepalm,
   wave,
   // ── Novedades Neko: banco, sociales y utilidades ──
-  deposit,
-  withdraw,
-  crime,
-  roulette,
-  topcount,
-  marry,
-  divorce,
-  aceptar,
-  pareja,
-  setbirth,
-  birthdays,
+  deposit: C.deposit,
+  withdraw: C.withdraw,
+  crime: C.crime,
+  roulette: C.roulette,
+  topcount: C.topcount,
+  marry: C.marry,
+  divorce: C.divorce,
+  aceptar: C.aceptar,
+  pareja: C.pareja,
+  setbirth: C.setbirth,
+  birthdays: C.birthdays,
   // ── Lote Perfiles (Neko): ficha, nivel y favoritos ──
-  setgenre,
-  setdescription,
-  setfavourite,
-  level,
-  leaderboard,
-  allbirthdays,
-  marryhistory,
-  toimg,
-  pfp,
+  setgenre: C.setgenre,
+  setdescription: C.setdescription,
+  setfavourite: C.setfavourite,
+  level: C.level,
+  leaderboard: C.leaderboard,
+  allbirthdays: C.allbirthdays,
+  marryhistory: C.marryhistory,
+  toimg: C.toimg,
+  pfp: C.pfp,
   // ── Interacciones nuevas (Neko) ──
   dance,
   laugh,
@@ -451,12 +354,12 @@ const commands = {
   thumbsup,
   yawn,
   // ── NSFW (apagado por defecto: /nsfw on) ──
-  nsfw: nsfwcmd,
-  rule34,
-  hentai,
+  nsfw: C.nsfw,
+  rule34: C.rule34,
+  hentai: C.hentai,
   danbooru,
   e621,
-  'nsfw-interaccion': nsfwInteraccion,
+  'nsfw-interaccion': C['nsfw-interaccion'],
   // Acciones NSFW con mencion
   anal,
   blowjob,
@@ -487,58 +390,58 @@ const commands = {
   pussy,
   nekomimi,
   // ── Alias de los nuevos ──
-  poll: encuesta,
-  react: reaccionar,
-  respuesta: reaccionar,
-  vv: revelar,
-  viewonce: revelar,
-  fx: efecto,
-  tictactoe: tateti,
-  tts: voz,
-  speak: voz,
-  fact: curiosidad,
-  github: gitinfo,
-  gh: gitinfo,
-  shorten: acortar,
-  lyrics: letra,
-  ly: letra,
-  pk: pokedex,
-  pdex: pokedex,
+  poll: C.encuesta,
+  react: C.reaccionar,
+  respuesta: C.reaccionar,
+  vv: C.revelar,
+  viewonce: C.revelar,
+  fx: C.efecto,
+  tictactoe: C.tateti,
+  tts: C.voz,
+  speak: C.voz,
+  fact: C.curiosidad,
+  github: C.gitinfo,
+  gh: C.gitinfo,
+  shorten: C.acortar,
+  lyrics: C.letra,
+  ly: C.letra,
+  pk: C.pokedex,
+  pdex: C.pokedex,
   // ── Alias de economía ──
-  bal: conSub(economy, 'bal'),
-  daily: conSub(economy, 'daily'),
-  work: conSub(economy, 'work'),
-  rob: conSub(economy, 'rob'),
-  pay: conSub(economy, 'pay'),
-  rank: conSub(economy, 'rank'),
+  bal: conSub(C.economy, 'bal'),
+  daily: conSub(C.economy, 'daily'),
+  work: conSub(C.economy, 'work'),
+  rob: conSub(C.economy, 'rob'),
+  pay: conSub(C.economy, 'pay'),
+  rank: conSub(C.economy, 'rank'),
   // ── Alias de internet ──
-  google: buscar,
-  search: buscar,
-  g: buscar,
-  yt: youtube,
-  wikipedia: wiki,
-  weather: clima,
-  tiempo: clima,
-  translate: traducir,
-  trad: traducir,
-  url: leerurl,
-  web: leerurl,
+  google: C.buscar,
+  search: C.buscar,
+  g: C.buscar,
+  yt: C.youtube,
+  wikipedia: C.wiki,
+  weather: C.clima,
+  tiempo: C.clima,
+  translate: C.traducir,
+  trad: C.traducir,
+  url: C.leerurl,
+  web: C.leerurl,
   // ── Alias de bienvenidas ──
-  bienvenida: welcome,
-  saludo: welcome,
-  despedida: bye,
+  bienvenida: C.welcome,
+  saludo: C.welcome,
+  despedida: C.bye,
   // ── Alias de descargas ──
-  dl: descargar,
-  tt: tiktok,
-  fb: facebook,
-  ig: instagram,
-  mf: mediafire,
-  x: twitter,
+  dl: C.descargar,
+  tt: C.tiktok,
+  fb: C.facebook,
+  ig: C.instagram,
+  mf: C.mediafire,
+  x: C.twitter,
   // ── IA: conversa con oraculos ──
-  gpt: chatgpt,
-  ai: chatgpt,
-  ask: chatgpt,
-  oraculo: chatIA,
+  gpt: C.chatgpt,
+  ai: C.chatgpt,
+  ask: C.chatgpt,
+  oraculo: C.ia,
   // ── Alias de interacciones ──
   beso: kiss,
   abrazo: hug,
@@ -553,8 +456,8 @@ const commands = {
   saludar: wave,
   picar: poke,
   mirar: stare,
-  interacciones: interaccion,
-  int: interaccion,
+  interacciones: C.interaccion,
+  int: C.interaccion,
   // Neko: alias de interacciones nuevas
   bailar: dance,
   reir: laugh,
@@ -567,44 +470,43 @@ const commands = {
   aprobar: thumbsup,
   bostezar: yawn,
   // ── Lote Neko: banco, sociales y utilidades ──
-  dep: deposit,
-  depositar: deposit,
-  with: withdraw,
-  retirar: withdraw,
-  crimen: crime,
-  rt: roulette,
-  ruleta: roulette,
-  topmensajes: topcount,
-  casarse: marry,
-  divorciarse: divorce,
-  aceptar,
-  cumplefecha: setbirth,
-  cumple: birthdays,
+  dep: C.deposit,
+  depositar: C.deposit,
+  with: C.withdraw,
+  retirar: C.withdraw,
+  crimen: C.crime,
+  rt: C.roulette,
+  ruleta: C.roulette,
+  topmensajes: C.topcount,
+  casarse: C.marry,
+  divorciarse: C.divorce,
+  cumplefecha: C.setbirth,
+  cumple: C.birthdays,
   // ── Alias de grupo que faltaban del menú Neko ──
-  gp: group,
+  gp: C.group,
   // ── Lote Perfiles (Neko): alias ──
-  delbirth: conSub(setbirth, 'borrar'),
-  delgenre: conSub(setgenre, 'borrar'),
-  delfavourite: conSub(setfavourite, 'borrar'),
-  delfav: conSub(setfavourite, 'borrar'),
-  setfav: setfavourite,
-  lvl: level,
-  lboard: leaderboard,
-  top: leaderboard,
-  allbirths: allbirthdays,
-  marriagehistory: marryhistory,
-  historialmatrimonio: marryhistory,
-  bodas: marryhistory,
-  setbio: setdescription,
-  descripcion: setdescription,
-  toimage: toimg,
-  getpic: pfp,
-  foto: pfp,
+  delbirth: conSub(C.setbirth, 'borrar'),
+  delgenre: conSub(C.setgenre, 'borrar'),
+  delfavourite: conSub(C.setfavourite, 'borrar'),
+  delfav: conSub(C.setfavourite, 'borrar'),
+  setfav: C.setfavourite,
+  lvl: C.level,
+  lboard: C.leaderboard,
+  top: C.leaderboard,
+  allbirths: C.allbirthdays,
+  marriagehistory: C.marryhistory,
+  historialmatrimonio: C.marryhistory,
+  bodas: C.marryhistory,
+  setbio: C.setdescription,
+  descripcion: C.setdescription,
+  toimage: C.toimg,
+  getpic: C.pfp,
+  foto: C.pfp,
   // ── Alias de NSFW ──
-  r34: rule34,
-  rule: rule34,
-  h: hentai,
-  porno: hentai,
+  r34: C.rule34,
+  rule: C.rule34,
+  h: C.hentai,
+  porno: C.hentai,
   dbooru: danbooru,
   // Alias en español de las acciones NSFW
   poto: ass,
@@ -617,190 +519,191 @@ const commands = {
   nalgada: spank,
   chorro: squirt,
   encuerar: undress,
-  tijeras: tijeras,
   69: sixnine,
   // ── Alias cortos: comandos largos en 1 o 2 letras ──
-  dado: dado,
-  m: menu,
-  s: sticker,
-  sv: stickervideo,
-  d: descargar,
-  tr: traducir,
-  cleartmp: cleartmp,
-  vip: vip,
-  vipbadge: vipbadge,
-  vipmenu: vipmenu,
-  vipboost: vipboost,
-  dona: dona,
-  gachaclaim: gachaclaim,
-  cleartemp: cleartmp,
-  borrartmp: cleartmp,
-  cl: clima,
-  pf: profile,
-  n: notes,
-  ad: adivinar,
-  ac: acertijo,
-  sp: sopa,
-  ah: ahorcado,
-  cs: casino,
-  gr: conSub(gachaCmd, 'random'),
-  gc: conSub(gachaCmd, 'random'),
-  u: uno,
-  tod: truthordare,
-  j: joke,
-  q: quote,
-  r: reaccionar,
-  v: voz,
-  p: ping,
-  i: info,
-  ht: hidetag,
-  gi: groupinfo,
-  lm: listmembers,
-  la: listadmins,
-  lg: listgroups,
-  inv: invite,
-  rl: resetlink,
-  ep: ephemeral,
-  y: youtube,
+  m: C.menu,
+  s: C.sticker,
+  sv: C.stickervideo,
+  d: C.descargar,
+  tr: C.traducir,
+  vip: C.vip,
+  vipbadge: C.vipbadge,
+  vipmenu: C.vipmenu,
+  vipboost: C.vipboost,
+  dona: C.dona,
+  gachaclaim: C.gachaclaim,
+  setcardimage: C.setcardimage,
+  sci: C.setcardimage,
+  cleartemp: C.cleartmp,
+  borrartmp: C.cleartmp,
+  cl: C.clima,
+  pf: C.profile,
+  n: C.notes,
+  ad: C.adivinar,
+  ac: C.acertijo,
+  sp: C.sopa,
+  ah: C.ahorcado,
+  cs: C.casino,
+  gr: conSub(C.gacha, 'random'),
+  gc: C.gacha,
+  u: C.uno,
+  tod: C.truthordare,
+  j: C.joke,
+  q: C.quote,
+  r: C.reaccionar,
+  v: C.voz,
+  p: C.ping,
+  i: C.info,
+  ht: C.hidetag,
+  gi: C.groupinfo,
+  lm: C.listmembers,
+  la: C.listadmins,
+  lg: C.listgroups,
+  inv: C.invite,
+  rl: C.resetlink,
+  ep: C.ephemeral,
+  y: C.youtube,
   // ── Alias del nombre corto que se muestra en el menu ──
-  stk: stickers,
-  svideo: stickervideo,
-  verdad: truthordare,
-  elogio: compliment,
-  liga: pickup,
-  ahorca: ahorcado,
-  calc: calcular,
-  estil: estilizar,
-  eco: economy,
-  perfil: profile,
-  bienv: welcome,
-  ginfo: conSub(gachaCmd, 'stats'),
-  miembros: listmembers,
-  admins: listadmins,
-  grupos: listgroups,
-  nuevo: creategroup,
-  nombre: setname,
-  desc: setdesc,
-  link: resetlink,
-  reqs: requests,
-  apro: approve,
-  rech: reject,
-  promo: promote,
-  demo: demote,
-  restr: restrict,
-  sys: systemcmd,
-  eph: ephemeral,
-  hist: history,
-  ar: autoreact,
-  tags: hidetag,
-  anti: antilink,
-  adv: advertencia,
-  ww: warnwords,
-  warnwords: warnwords,
+  stk: C.stickers,
+  svideo: C.stickervideo,
+  verdad: C.truthordare,
+  elogio: C.compliment,
+  liga: C.pickup,
+  ahorca: C.ahorcado,
+  calc: C.calcular,
+  estil: C.estilizar,
+  eco: C.economy,
+  perfil: C.profile,
+  bienv: C.welcome,
+  ginfo: conSub(C.gacha, 'stats'),
+  miembros: C.listmembers,
+  admins: C.listadmins,
+  grupos: C.listgroups,
+  nuevo: C.creategroup,
+  nombre: C.setname,
+  desc: C.setdesc,
+  link: C.resetlink,
+  reqs: C.requests,
+  apro: C.approve,
+  rech: C.reject,
+  promo: C.promote,
+  demo: C.demote,
+  restr: C.restrict,
+  sys: C.system,
+  eph: C.ephemeral,
+  hist: C.history,
+  ar: C.autoreact,
+  tags: C.hidetag,
+  anti: C.antilink,
+  adv: C.advertencia,
+  ww: C.warnwords,
+  // ── Lote Neko: interactions NSFW ──
+  nsfwacciones: C['nsfw-interaccion'],
+  accionesnsfw: C['nsfw-interaccion'],
   // ── Lote Neko: gacha de personajes ──
-  claim: conSub(gachaCmd, 'claim'),
-  c: reclamarRandom,
-  reclamar: conSub(gachaCmd, 'claim'),
-  rollgacha: conSub(gachaCmd, 'random'),
-  rw: conSub(gachaCmd, 'random'),
-  roll: conSub(gachaCmd, 'random'),
-  winfo: conSub(gachaCmd, 'info'),
-  waifuinfo: conSub(gachaCmd, 'info'),
-  charinfo: conSub(gachaCmd, 'info'),
-  harem: conSub(gachaCmd, 'collection'),
-  waifus: conSub(gachaCmd, 'collection'),
-  claims: conSub(gachaCmd, 'collection'),
-  collection: conSub(gachaCmd, 'collection'),
-  coleccion: conSub(gachaCmd, 'collection'),
-  gachaboard: conSub(gachaCmd, 'valtop'),
-  waifustop: conSub(gachaCmd, 'valtop'),
-  topwaifus: conSub(gachaCmd, 'valtop'),
-  wtop: conSub(gachaCmd, 'valtop'),
-  valorboard: conSub(gachaCmd, 'valtop'),
-  favoritetop: conSub(gachaCmd, 'favtop'),
-  favtop: conSub(gachaCmd, 'favtop'),
-  gachashop: conSub(gachaCmd, 'shop'),
-  tiendawaifus: conSub(gachaCmd, 'shop'),
-  wshop: conSub(gachaCmd, 'shop'),
-  givechar: conSub(gachaCmd, 'give'),
-  givewaifu: conSub(gachaCmd, 'give'),
-  regalar: conSub(gachaCmd, 'give'),
-  giveallgacha: conSub(gachaCmd, 'giveall'),
-  buycharacter: conSub(gachaCmd, 'buy'),
-  buychar: conSub(gachaCmd, 'buy'),
-  buyc: conSub(gachaCmd, 'buy'),
-  deletegacha: conSub(gachaCmd, 'delwaifu'),
-  delgacha: conSub(gachaCmd, 'delwaifu'),
-  delchar: conSub(gachaCmd, 'delwaifu'),
-  setclaimmsg: conSub(gachaCmd, 'claimmsg'),
-  setclaim: conSub(gachaCmd, 'claimmsg'),
-  delclaimmsg: conSub(gachaCmd, 'delclaimmsg'),
-  charvideo: conSub(gachaCmd, 'video'),
-  waifuvideo: conSub(gachaCmd, 'video'),
-  cvideo: conSub(gachaCmd, 'video'),
-  wvideo: conSub(gachaCmd, 'video'),
-  charimage: conSub(gachaCmd, 'image'),
-  waifuimage: conSub(gachaCmd, 'image'),
-  cimage: conSub(gachaCmd, 'image'),
-  wimage: conSub(gachaCmd, 'image'),
-  serieinfo: conSub(gachaCmd, 'serieinfo'),
-  ainfo: conSub(gachaCmd, 'serieinfo'),
-  animeinfo: conSub(gachaCmd, 'serieinfo'),
-  serielist: conSub(gachaCmd, 'serielist'),
-  slist: conSub(gachaCmd, 'serielist'),
-  animelist: conSub(gachaCmd, 'serielist'),
-  vote: conSub(gachaCmd, 'vote'),
-  votar: conSub(gachaCmd, 'vote'),
-  trade: conSub(gachaCmd, 'trade'),
-  intercambiar: conSub(gachaCmd, 'trade'),
-  tiktoksearch: tiktoksearch,
-  igstory: igstory,
-  cuevana: cuevana,
-  spotifysearch: spotifysearch,
-  dalle: dalle,
-  remini: remini,
-  anonimo: anonimo,
-  sell: conSub(gachaCmd, 'sell'),
-  vender: conSub(gachaCmd, 'sell'),
-  removesale: conSub(gachaCmd, 'removesale'),
-  removerventa: conSub(gachaCmd, 'removesale'),
-  gachainfo: conSub(gachaCmd, 'stats'),
-  infogacha: conSub(gachaCmd, 'stats'),
+  claim: conSub(C.gacha, 'claim'),
+  c: C.c,
+  reclamar: conSub(C.gacha, 'claim'),
+  rollgacha: conSub(C.gacha, 'random'),
+  rw: conSub(C.gacha, 'random'),
+  roll: conSub(C.gacha, 'random'),
+  winfo: conSub(C.gacha, 'info'),
+  waifuinfo: conSub(C.gacha, 'info'),
+  charinfo: conSub(C.gacha, 'info'),
+  harem: conSub(C.gacha, 'collection'),
+  waifus: conSub(C.gacha, 'collection'),
+  claims: conSub(C.gacha, 'collection'),
+  collection: conSub(C.gacha, 'collection'),
+  coleccion: conSub(C.gacha, 'collection'),
+  gachaboard: conSub(C.gacha, 'valtop'),
+  waifustop: conSub(C.gacha, 'valtop'),
+  topwaifus: conSub(C.gacha, 'valtop'),
+  wtop: conSub(C.gacha, 'valtop'),
+  valorboard: conSub(C.gacha, 'valtop'),
+  favoritetop: conSub(C.gacha, 'favtop'),
+  favtop: conSub(C.gacha, 'favtop'),
+  gachashop: conSub(C.gacha, 'shop'),
+  tiendawaifus: conSub(C.gacha, 'shop'),
+  wshop: conSub(C.gacha, 'shop'),
+  givechar: conSub(C.gacha, 'give'),
+  givewaifu: conSub(C.gacha, 'give'),
+  regalar: conSub(C.gacha, 'give'),
+  giveallgacha: conSub(C.gacha, 'giveall'),
+  buycharacter: conSub(C.gacha, 'buy'),
+  buychar: conSub(C.gacha, 'buy'),
+  buyc: conSub(C.gacha, 'buy'),
+  deletegacha: conSub(C.gacha, 'delwaifu'),
+  delgacha: conSub(C.gacha, 'delwaifu'),
+  delchar: conSub(C.gacha, 'delwaifu'),
+  setclaimmsg: conSub(C.gacha, 'claimmsg'),
+  setclaim: conSub(C.gacha, 'claimmsg'),
+  delclaimmsg: conSub(C.gacha, 'delclaimmsg'),
+  charvideo: conSub(C.gacha, 'video'),
+  waifuvideo: conSub(C.gacha, 'video'),
+  cvideo: conSub(C.gacha, 'video'),
+  wvideo: conSub(C.gacha, 'video'),
+  charimage: conSub(C.gacha, 'image'),
+  waifuimage: conSub(C.gacha, 'image'),
+  cimage: conSub(C.gacha, 'image'),
+  wimage: conSub(C.gacha, 'image'),
+  serieinfo: conSub(C.gacha, 'serieinfo'),
+  ainfo: conSub(C.gacha, 'serieinfo'),
+  animeinfo: conSub(C.gacha, 'serieinfo'),
+  serielist: conSub(C.gacha, 'serielist'),
+  slist: conSub(C.gacha, 'serielist'),
+  animelist: conSub(C.gacha, 'serielist'),
+  vote: conSub(C.gacha, 'vote'),
+  votar: conSub(C.gacha, 'vote'),
+  trade: conSub(C.gacha, 'trade'),
+  intercambiar: conSub(C.gacha, 'trade'),
+  tiktoksearch: C.tiktoksearch,
+  igstory: C.igstory,
+  cuevana: C.cuevana,
+  spotifysearch: C.spotifysearch,
+  dalle: C.dalle,
+  remini: C.remini,
+  anonimo: C.anonimo,
+  sell: conSub(C.gacha, 'sell'),
+  vender: conSub(C.gacha, 'sell'),
+  removesale: conSub(C.gacha, 'removesale'),
+  removerventa: conSub(C.gacha, 'removesale'),
+  gachainfo: conSub(C.gacha, 'stats'),
+  infogacha: conSub(C.gacha, 'stats'),
   // ── Lote Neko: descargas ──
-  mp4: video,
-  ytmp4: video,
-  mp4doc: conSub(video, 'doc'),
-  play: audio,
-  playaudio: audio,
-  ytaudio: conSub(audio, 'voz'),
-  reel: instagram,
-  ytsearch: youtube,
-  pin: pinterest,
-  px: pixiv,
-  pixivpdf: conSub(pixiv, 'pdf'),
-  nh: nhentai,
-  nhdl: nhentai,
-  hitomila: hitomi,
-  vmp: vermangasporno,
+  mp4: C.video,
+  ytmp4: C.video,
+  mp4doc: conSub(C.video, 'doc'),
+  play: C.audio,
+  playaudio: C.audio,
+  ytaudio: conSub(C.audio, 'voz'),
+  reel: C.instagram,
+  ytsearch: C.youtube,
+  pin: C.pinterest,
+  px: C.pixiv,
+  pixivpdf: conSub(C.pixiv, 'pdf'),
+  nh: C.nhentai,
+  nhdl: C.nhentai,
+  hitomila: C.hitomi,
+  vmp: C.vermangasporno,
   // ── Lote Administracion: modos por chat ──
   bot: botModo,
   economia: economiaModo,
   onlyadmin,
-  modos,
-  autoreact,
-  msgcount,
-  topinactive,
-  groupimage,
-  setwarnlimit,
+  modos: C.modos,
+  autoreact: C.autoreact,
+  msgcount: C.msgcount,
+  topinactive: C.topinactive,
+  groupimage: C.groupimage,
+  setwarnlimit: C.setwarnlimit,
   // Alias del lote administracion
-  close: mute,
-  open: mute,
-  mensajes: msgcount,
-  topinactivos: topinactive,
-  inactivos: topinactive,
-  groupimg: groupimage,
-  setgroupimage: groupimage,
-  warnlimit: setwarnlimit,
+  close: C.mute,
+  open: C.mute,
+  mensajes: C.msgcount,
+  topinactivos: C.topinactive,
+  inactivos: C.topinactive,
+  groupimg: C.groupimage,
+  setgroupimage: C.groupimage,
+  warnlimit: C.setwarnlimit,
 }
 
 // ───────────── Utilidades ─────────────
@@ -1048,6 +951,16 @@ async function startBot() {
           log.sistema(`👥 ${Object.keys(todos || {}).length} grupos cargados`)
         })
         .catch(() => {})
+
+      // Rarezas del gacha: una pasada al dia en segundo plano para que
+      // .gachaboard y .gacha collection no muestren las viejas
+      sincronizarRarezas()
+        .then((r) => {
+          if (r && !r.omitido) {
+            log.sistema(`🎴 Rarezas del gacha: ${r.actualizados} corregidas de ${r.revisados}`)
+          }
+        })
+        .catch(() => {})
     }
 
     if (connection === 'close') {
@@ -1102,15 +1015,17 @@ const userSpamData = {}
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return
 
-    for (const msg of messages) {
+    // Antes: `for ... await` (un comando lento frenaba todo el lote).
+    // Ahora: hasta MAX_MENSAJES_EN_PARALELO mensajes a la vez.
+    await mapConLimite(messages, MAX_MENSAJES_EN_PARALELO, async (msg) => {
       try {
-        if (!msg.message) continue
+        if (!msg?.message) return
 
         const jid = msg.key.remoteJid
-        if (jid === 'status@broadcast') continue
+        if (jid === 'status@broadcast') return
 
         // Ignora los mensajes que envió el propio bot (evita bucles)
-        if (vieneDelBot(msg)) continue
+        if (vieneDelBot(msg)) return
 
         // Quién envió el mensaje (en grupos viene en participant)
         const sender = msg.key.fromMe ? sock.user?.id : msg.key.participant
@@ -1139,6 +1054,7 @@ const userSpamData = {}
         // ── Antispam básico (MEGA-MD adaptado) ──
         if (esGrupo && modoChat(jid, 'antispam') && !msg.key.fromMe && texto) {
           try {
+            purgarSpam(userSpamData)
             const senderId = msg.key.participant || msg.key.fromMe ? sock.user?.id : msg.key.remoteJid
             const now = Date.now()
             if (!userSpamData[senderId]) {
@@ -1171,7 +1087,7 @@ const userSpamData = {}
         const mensajeId = msg.key.id
         const tieneContenido = texto !== '' || msg.message?.imageMessage || msg.message?.videoMessage || msg.message?.audioMessage || msg.message?.documentMessage || msg.message?.stickerMessage
         if (mensajeId && tieneContenido) {
-          mensajeCache.set(mensajeId, {
+          guardarEnCache(mensajeId, {
             contenido: texto,
             mensajeOriginal: msg.message,
             urlImagen: msg.message?.imageMessage?.url || msg.message?.imageMessage?.mediaUrl || null,
@@ -1181,13 +1097,6 @@ const userSpamData = {}
             jid: jid,
             tiempo: Date.now()
           })
-          // Limpiar cache expirado
-          const ahora = Date.now()
-          for (const [id, data] of mensajeCache.entries()) {
-            if (ahora - data.tiempo > TIEMPO_VIDA_MENSAJE) {
-              mensajeCache.delete(id)
-            }
-          }
         }
 
         // ── AFK: avisa cuando el usuario vuelve a escribir ──
@@ -1213,7 +1122,7 @@ const userSpamData = {}
             const accion = await revisarAntilink({ sock, jid, msg, sender, texto, metadata })
 
             // Si se aplicó una sanción no se procesa el comando del mensaje
-            if (accion) { log.seguridad('ANTILINK', `${tokenMencion(sender)} · acción: ${accion}`, jid); continue }
+            if (accion) { log.seguridad('ANTILINK', `${tokenMencion(sender)} · acción: ${accion}`, jid); return }
           } catch (err) {
             log.error('Error en el filtro de antilink', err)
           }
@@ -1264,11 +1173,11 @@ const userSpamData = {}
           // Mensaje vacío puede indicar que fue eliminado
           try {
             const antiActivado = getAntiDelete(jid)
-            if (!antiActivado) continue
+            if (!antiActivado) return
             // Verificar que el usuario que eliminó sea admin
             if (sender) {
               const metadata = await obtenerMetadataCacheada(sock, jid)
-              if (!esAdmin(metadata, sender)) continue
+              if (!esAdmin(metadata, sender)) return
             }
             // Frases burlonas estilo Beerus (dios de la destrucción)
             const frasesBeerus = [
@@ -1288,7 +1197,10 @@ const userSpamData = {}
               if (idDirecto?.contenido) return idDirecto
               // Buscar por chat + sender, el mensaje más reciente
               let mejor = null
+              const limpiezaAntigua = Date.now() - TIEMPO_VIDA_MENSAJE
               for (const [id, data] of mensajeCache) {
+                // Ignora mensajes fuera de la ventana de anti-delete
+                if (data.tiempo < limpiezaAntigua) continue
                 const tieneContenidoReal = data.contenido !== undefined || data.mensajeOriginal
                 if (data.jid === jid && data.sender === sender && tieneContenidoReal) {
                   if (!mejor || data.tiempo > mejor.tiempo) mejor = { ...data, id }
@@ -1321,13 +1233,13 @@ const userSpamData = {}
         }
 
         if (msg.messageStubType && jid?.endsWith('@g.us') && modoChat(jid, 'detect')) {
-          try { await autodetect({ sock, jid, msg, args: [], sender: msg.key.participant || msg.key.fromMe ? sock.user?.id : msg.key.remoteJid, esGrupo: true }) } catch {}
+          try { await C.autodetect({ sock, jid, msg, args: [], sender: msg.key.participant || msg.key.fromMe ? sock.user?.id : msg.key.remoteJid, esGrupo: true }) } catch {}
         }
 
         const prefijo = PREFIX.find((p) => texto.startsWith(p))
         if (prefijo) {
           const [nombre, ...args] = texto.slice(prefijo.length).trim().split(/\s+/)
-          if (!nombre) continue
+          if (!nombre) return
 
           const clave = nombre.toLowerCase()
 
@@ -1338,7 +1250,7 @@ const userSpamData = {}
             // Modo bot apagado: solo responde a /bot (y /onlyadmin)
             if (!modoChat(jid, 'bot') && !esPuerta) {
               log.ignorado({ nombre: prefijo + clave, jid, motivo: 'bot apagado en el grupo' })
-              continue
+              return
             }
 
             // Modo solo admins: el resto de comandos se silencia
@@ -1351,7 +1263,7 @@ const userSpamData = {}
               }
               if (!permitido) {
                 log.ignorado({ nombre: prefijo + clave, jid, motivo: 'solo admins' })
-                continue
+                return
               }
             }
 
@@ -1359,12 +1271,22 @@ const userSpamData = {}
             // el gacha tiene su propia puerta dentro de /gacha)
             if (categoriaDe(clave) === 'economia' && clave !== 'economia' && !modoChat(jid, 'economia')) {
               log.ignorado({ nombre: prefijo + clave, jid, motivo: 'economía apagada' })
-              continue
+              return
             }
           }
 
           const comando = commands[clave]
-          if (!comando) { log.ignorado({ nombre: prefijo + clave, jid, motivo: 'no existe' }); continue }
+          if (!comando) { log.ignorado({ nombre: prefijo + clave, jid, motivo: 'no existe' }); return }
+
+          // ── Club VIP: comandos exclusivos (antes de ejecutar) ──
+          if (COMANDOS_VIP.has(clave) && !esVip(jidsDe({ msg, sender, sock }))) {
+            log.ignorado({ nombre: prefijo + clave, jid, motivo: 'solo VIP' })
+            await sock.sendMessage(jid, {
+              text: `❌ \`${prefijo}${clave}\` es exclusivo del Club VIP.\n_El owner puede darte acceso con_ \`.vip add @usuario\`_._`,
+              quoted: msg,
+            })
+            return
+          }
 
           // Todos los comandos reciben el mismo contexto
           const terminar = log.comando({ nombre: prefijo + clave, args, jid })
@@ -1385,20 +1307,30 @@ const userSpamData = {}
           } catch (e) {
             terminar(e)
           }
-          continue
+          return
         }
 
         // ── Menciones: el bot responde cuando lo llaman ──
-        if (!esMencionDelBot(msg, sock, MENCIONES_BOT)) continue
+        if (!esMencionDelBot(msg, sock, MENCIONES_BOT)) return
 
         // Con el modo bot apagado (o solo admins) la mencion tambien duerme
-        if (esGrupo && (!modoChat(jid, 'bot') || modoChat(jid, 'onlyadmin'))) continue
+        if (esGrupo && (!modoChat(jid, 'bot') || modoChat(jid, 'onlyadmin'))) return
 
         const solicitado = extraerComandoTrasMencion(texto, MENCIONES_BOT)
         const nombre = solicitado?.nombre?.toLowerCase()
         const comando = nombre ? commands[nombre] : null
 
         if (comando) {
+          // ── Club VIP: comandos exclusivos tambien por mencion ──
+          if (nombre && COMANDOS_VIP.has(nombre) && !esVip(jidsDe({ msg, sender, sock }))) {
+            log.ignorado({ nombre, jid, motivo: 'solo VIP' })
+            await sock.sendMessage(jid, {
+              text: `❌ \`${nombre}\` es exclusivo del Club VIP.\n_El owner puede darte acceso con_ \`.vip add @usuario\`_._`,
+              quoted: msg,
+            })
+            return
+          }
+
           // "beerus help" -> ejecuta el comando help
           const terminar = log.comando({ nombre, args: solicitado.args, jid, via: 'mención' })
           try {
@@ -1418,7 +1350,7 @@ const userSpamData = {}
           } catch (e) {
             terminar(e)
           }
-          continue
+          return
         }
 
         // Mención sin comando -> charla con Beerus (IA). Sin texto, saluda y da la ayuda
@@ -1432,7 +1364,7 @@ const userSpamData = {}
           } catch (e) {
             terminarIA(e)
           }
-          continue
+          return
         }
 
         await sock.sendMessage(
@@ -1448,7 +1380,7 @@ const userSpamData = {}
       } catch (err) {
         log.error('Error procesando el mensaje', err)
       }
-    }
+    })
   })
 
   // ── Bienvenidas y despedidas en grupos ──
@@ -1483,10 +1415,15 @@ const userSpamData = {}
 
   // Precarga el banner de Beerus para que el menu no espere
   try {
-  obtenerAvatarBeerus()
-} catch (err) {
-  log.error('Error precargando avatar de Beerus', err)
-}
+    obtenerAvatarBeerus()
+  } catch (err) {
+    log.error('Error precargando avatar de Beerus', err)
+  }
+
+  // Baja banners de internet en segundo plano: el menu tendra variedad
+  sincronizarBanners({ nuevo: 4 }).catch((err) =>
+    log.aviso(`No se pudieron precargar los banners del menu: ${err.message}`)
+  )
 }
 
 // ───────────── Arranque ─────────────

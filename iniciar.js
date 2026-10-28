@@ -12,9 +12,10 @@
 import { AUTO_ACTUALIZAR, RAMA_ACTUALIZACION } from './config.js'
 import { actualizarBot } from './lib/actualizador.js'
 
+const forzar = process.argv.includes('--update')
 const omitir = process.argv.includes('--no-update') || process.env.BEERUS_NO_UPDATE === '1'
 
-if (AUTO_ACTUALIZAR && !omitir) {
+if ((AUTO_ACTUALIZAR || forzar) && !omitir) {
   try {
     actualizarBot({ rama: RAMA_ACTUALIZACION })
   } catch (err) {

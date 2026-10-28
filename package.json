@@ -1,6 +1,6 @@
 {
   "name": "beerus-bot-md",
-  "version": "2.2.0",
+  "version": "2.4.0",
   "description": "Beerus Bot MD - Bot de WhatsApp multi-dispositivo con Baileys",
   "type": "module",
   "main": "index.js",
@@ -8,11 +8,11 @@
     "start": "node iniciar.js",
     "dev": "node --watch index.js",
     "verify": "node verify.mjs",
-    "test": "node verify.mjs && node test-db.mjs && node test-bot.mjs && node test-waifu-random.mjs",
-    "test:db": "node test-db.mjs",
-    "test:bot": "node test-bot.mjs",
-    "test:internet": "node test-internet.mjs",
-    "test:waifu": "node test-waifu-random.mjs"
+    "check": "node --check index.js && node --check lib/loader.js && node --check database/db.js",
+    "test": "node verify.mjs",
+    "cartas": "node scripts/refrescar-cartas.mjs",
+    "banners": "node scripts/renovar-banners.mjs",
+    "rarezas": "node scripts/sincronizar-rarezas.mjs"
   },
   "keywords": [
     "whatsapp",
@@ -23,7 +23,7 @@
   "author": "Beerus_zv",
   "license": "MIT",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.13.0"
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",

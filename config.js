@@ -14,10 +14,14 @@ export const PREFIX = PREFIXES
 
 /**
  * Actualizacion automatica al iniciar con `npm start` (usa git).
- * AUTO_ACTUALIZAR: false para desactivarla (o inicia con `--no-update`).
+ *
+ * DESACTIVADA por defecto: el actualizador hace `git merge` y `npm install`
+ * antes de cargar el bot, es decir, ejecuta codigo del repositorio remoto
+ * sin revisarlo. Actívala solo si controlas el remoto.
+ * También se puede forzar con `--update` o desactivar con `--no-update`.
  * RAMA_ACTUALIZACION: rama a seguir; vacio = la rama en la que esta el bot.
  */
-export const AUTO_ACTUALIZAR = true
+export const AUTO_ACTUALIZAR = false
 export const RAMA_ACTUALIZACION = ''
 
 /**
@@ -80,16 +84,19 @@ export const CONTACTO = {
 /**
  * Banner del menu.
  * Prioridad de fuentes:
- *   1. BANNER_LOCAL  -> arte del proyecto (assets/beerus-banner.png)
- *   2. IMAGEN_MENU_INTERNET -> descarga una imagen de Beerus de internet
- *   3. arte imperial dibujado por el bot
+ *   1. banners de internet en cache (data/banners/, ver lib/banners-menu.js)
+ *   2. busqueda de imagenes (Bing, con DuckDuckGo de respaldo)
+ *   3. BANNER_LOCAL -> arte del proyecto (assets/beerus-banner.png) si no hay red
+ *
+ * Cada banner de internet se recorta a 900x600 y se le escribe encima el
+ * titulo del bot; el menu manda uno al azar distinto del anterior.
  */
 export const IMAGEN_MENU_INTERNET = true
 
 /**
  * Banner local incluido en el proyecto.
- * Es la imagen principal del bot (arte de Beerus) y tiene prioridad sobre
- * cualquier descarga: se usa como cabecera del menu y como foto del bot.
+ * Arte de Beerus que se usa como respaldo del menu cuando no hay internet
+ * y tambien como foto del bot (precarga de avatar).
  * Ruta relativa a la raiz del proyecto.
  */
 export const BANNER_LOCAL = 'assets/beerus-banner.png'

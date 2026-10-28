@@ -40,7 +40,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS advertencias (id INTEGER PRIMARY KEY AUTOINCREMENT, grupo TEXT NOT NULL, jid TEXT NOT NULL, razon TEXT, ejecutor TEXT, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')));
   CREATE INDEX IF NOT EXISTS idx_advertencias_grupo ON advertencias(grupo, jid);
   CREATE TABLE IF NOT EXISTS afk (jid TEXT PRIMARY KEY, motivo TEXT, chat TEXT, desde TEXT NOT NULL DEFAULT (datetime('now','localtime')));
-  CREATE TABLE IF NOT EXISTS vip (jid TEXT PRIMARY KEY, puntos INTEGER NOT NULL DEFAULT 0, rango TEXT NOT NULL DEFAULT 'miembro', ultimo_boost TEXT, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')));
+  CREATE TABLE IF NOT EXISTS vip (jid TEXT PRIMARY KEY, puntos INTEGER NOT NULL DEFAULT 0, rango TEXT NOT NULL DEFAULT 'miembro', ultimo_boost TEXT, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')), persona TEXT);
   CREATE INDEX IF NOT EXISTS idx_vip_rango ON vip(rango);
   CREATE TABLE IF NOT EXISTS vip_log (id INTEGER PRIMARY KEY AUTOINCREMENT, jid TEXT NOT NULL, accion TEXT NOT NULL, razon TEXT, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')));
   CREATE TABLE IF NOT EXISTS ultima_waifu (chat TEXT PRIMARY KEY, personaje_id INTEGER NOT NULL, nombre TEXT, enviado TEXT NOT NULL DEFAULT (datetime('now','localtime')));
@@ -57,12 +57,25 @@ try { db.exec('ALTER TABLE economia ADD COLUMN ultimo_robo TEXT') } catch {}
 try { db.exec('ALTER TABLE usuarios ADD COLUMN genero TEXT') } catch {}
 try { db.exec('ALTER TABLE usuarios ADD COLUMN descripcion TEXT') } catch {}
 try { db.exec('ALTER TABLE gacha_personajes ADD COLUMN video TEXT') } catch {}
+try { db.exec('ALTER TABLE gacha_personajes ADD COLUMN favoritos INTEGER') } catch {}
 try { db.exec('ALTER TABLE vip ADD COLUMN ultimo_boost TEXT') } catch {}
+// Persona = digitos del telefono (o del LID si no se conoce): agrupa las
+// filas PN y LID de un mismo miembro en la lista del club.
+try { db.exec('ALTER TABLE vip ADD COLUMN persona TEXT') } catch {}
 
 // Migrar esquema antilink (desde config a activo/accion/whitelist)
 try { db.exec('ALTER TABLE antilink ADD COLUMN activo INTEGER NOT NULL DEFAULT 0') } catch {}
 try { db.exec('ALTER TABLE antilink ADD COLUMN accion TEXT NOT NULL DEFAULT "kick"') } catch {}
 try { db.exec('ALTER TABLE antilink ADD COLUMN whitelist TEXT') } catch {}
+
+// JIDs antiguos con '+' delante ('+573...@s.whatsapp.net') nunca coincidian
+// al comprobar el acceso. Se reparan (y se descartan si ya existe el limpio).
+try { db.exec("DELETE FROM vip WHERE jid LIKE '+%@%' AND REPLACE(jid, '+', '') IN (SELECT jid FROM vip)") } catch {}
+try { db.exec("UPDATE vip SET jid = REPLACE(jid, '+', '') WHERE jid LIKE '+%@%'") } catch {}
+
+// Limpieza: el antiguo `.vip add` insertaba jid = NULL (db.exec no acepta
+// parametros) y esas filas rotas nunca coincidian con ningun usuario.
+try { db.exec("DELETE FROM vip WHERE jid IS NULL OR jid = ''") } catch {}
 
 import { CATALOGO_ANIME, RAREZAS } from './catalogo.js'
 
@@ -474,10 +487,16 @@ export function favoritoGacha(jid) {
   if (!row) return undefined
   return { id: row.id, nombre: row.nombre, anime: row.anime }
 }
-export function agregarPersonajeGacha({ nombre, anime, rareza, imagen = null, genero = null } = {}) {
+export function agregarPersonajeGacha({ nombre, anime, rareza, imagen = null, genero = null, favoritos = null } = {}) {
   const valor = (RAREZAS && RAREZAS[rareza]?.valor) ?? 15
-  const r = db.prepare('INSERT INTO gacha_personajes (nombre, anime, rareza, valor, imagen, genero) VALUES (?,?,?,?,?,?)').run(nombre, anime, rareza, valor, imagen, genero ?? '')
+  const r = db.prepare('INSERT INTO gacha_personajes (nombre, anime, rareza, valor, imagen, genero, favoritos) VALUES (?,?,?,?,?,?,?)').run(nombre, anime, rareza, valor, imagen, genero ?? '', favoritos)
   return Number(r.lastInsertRowid)
+}
+
+/** Reescribe rareza, valor y favoritos de una fila (sincronizacion con AniList) */
+export function actualizarRarezaPersonaje(id, rareza, valor, favoritos = null) {
+  db.prepare('UPDATE gacha_personajes SET rareza = ?, valor = ?, favoritos = ? WHERE id = ?').run(rareza, valor, favoritos, id)
+  return true
 }
 
 export function reclamarPersonaje(jid, personajeId, grupo = null) {
@@ -538,7 +557,32 @@ export function inventarioGacha(jid) {
   return db.prepare('SELECT gi.*, gp.nombre, gp.anime, gp.rareza, gp.valor FROM gacha_inventario gi JOIN gacha_personajes gp ON gp.id = gi.personaje_id WHERE gi.jid = ?').all(jid)
 }
 export function listarAnimesGacha() {
-  return db.prepare('SELECT DISTINCT anime FROM gacha_personajes ORDER BY anime').all().map((r) => r.anime)
+  const filas = db
+    .prepare(
+      'SELECT anime, COUNT(*) AS n FROM gacha_personajes ' +
+        "WHERE anime IS NOT NULL AND TRIM(anime) <> '' GROUP BY anime"
+    )
+    .all()
+
+  // Une las variantes de escritura del mismo anime ("One Piece" / "ONE PIECE")
+  const mapa = new Map()
+  for (const fila of filas) {
+    const nombre = String(fila.anime).trim()
+    const clave = nombre.toLowerCase()
+    const previo = mapa.get(clave)
+    const n = Number(fila.n) || 0
+    if (!previo) {
+      mapa.set(clave, { anime: nombre, personajes: n })
+      continue
+    }
+    previo.personajes += n
+    // Se queda la escritura con minusculas ("One Piece" antes que "ONE PIECE")
+    if (/[a-z]/.test(nombre) && !/[a-z]/.test(previo.anime)) previo.anime = nombre
+  }
+
+  return [...mapa.values()].sort(
+    (a, b) => b.personajes - a.personajes || a.anime.localeCompare(b.anime)
+  )
 }
 export function reclamacionesGacha(jid) {
   return db.prepare('SELECT gc.*, gp.nombre, gp.anime, gp.rareza, gp.valor FROM gacha_claims gc JOIN gacha_personajes gp ON gp.id = gc.personaje_id WHERE gc.jid = ?').all(jid)

@@ -11,9 +11,22 @@ import { nsfwActivo, ultimoUso, marcarUso } from '../database/db.js'
 import { buscarNSFW, postRecibibles, descargarPost, TAGS_AZAR } from '../lib/nsfw.js'
 import { mimeDe } from '../lib/descargas.js'
 import { recargaActiva } from '../lib/economia.js'
+import sharp from 'sharp'
 
 const CLAVE_RECARGA = 'nsfw'
-const MAX_ENVIO = 8 * 1024 * 1024
+/** Si el original pasa de aqui se reconvierte a JPEG de alta calidad */
+const MAX_IMAGEN = 8 * 1024 * 1024
+
+/** Reduce el peso sin bajar la resolucion (calidad 94, sin submuestreo de color) */
+async function aligerarImagen(buffer) {
+  let imagen = sharp(buffer, { failOn: 'none' })
+  const { width } = await imagen.metadata()
+  if (width && width > 4096) imagen = imagen.resize({ width: 4096 })
+  return imagen
+    .flatten({ background: '#ffffff' })
+    .jpeg({ quality: 94, chromaSubsampling: '4:4:4' })
+    .toBuffer()
+}
 
 export const AYUDA =
   `🔞 *Rule34*\n\n` +
@@ -87,6 +100,14 @@ export async function ejecutarBusqueda({ sock, jid, msg, args, sender }, { azar 
       `📥 ${post.url.slice(0, 90)}`
 
     const esVideo = ['gif', 'mp4', 'webm'].includes(post.extension)
+    let mimetypeImagen = mimeDe(post.extension) || 'image/jpeg'
+
+    // Imagenes enormes: se reconvierten sin perder resolucion para que
+    // WhatsApp no las rechace. El resto se envia tal cual (calidad original).
+    if (!esVideo && buffer.length > MAX_IMAGEN) {
+      buffer = await aligerarImagen(buffer)
+      mimetypeImagen = 'image/jpeg'
+    }
 
     if (esVideo) {
       await sock.sendMessage(jid, {
@@ -99,7 +120,7 @@ export async function ejecutarBusqueda({ sock, jid, msg, args, sender }, { azar 
     } else {
       await sock.sendMessage(jid, {
         image: buffer,
-        mimetype: mimeDe(post.extension) || 'image/jpeg',
+        mimetype: mimetypeImagen,
         caption: descripcion,
         quoted: msg,
       })

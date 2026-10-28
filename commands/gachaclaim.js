@@ -4,15 +4,15 @@ import { buscarOImportar } from '../lib/gacha-internet.js'
 import { formatearFicha } from '../lib/gacha.js'
 import { enviarCartaPersonaje } from '../lib/imagenes.js'
 import { asegurarOwnerVip } from '../lib/owner.js'
+import { jidsDe, esVip } from '../lib/vip.js'
 
 export default async ({ sock, jid, msg, args, sender, esGrupo }) => {
   // Vincula el JID actual del owner (aunque sea @lid) a la tabla vip
   asegurarOwnerVip(db, { sock, msg, sender })
-  // Solo VIP (el owner tambien)
-  const vipRow = db.prepare('SELECT * FROM vip WHERE jid = ?').get(sender)
-  if (!vipRow || !['vip', 'owner'].includes(vipRow.rango)) {
+  // Solo VIP (el owner tambien), aceptando PN, LID o sufijo de dispositivo
+  if (!esVip(jidsDe({ msg, sender, sock }))) {
     return await sock.sendMessage(jid, {
-      text: '❌ Solo usuarios VIP pueden usar `.gachaclaim`.\nUsa `.vipbadge` para verificar tu rango.',
+      text: '❌ Solo usuarios VIP pueden usar `.gachaclaim`.\nPide acceso con `.vip add @usuario` (owner).',
       quoted: msg,
     })
   }
