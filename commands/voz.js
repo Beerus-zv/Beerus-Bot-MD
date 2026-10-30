@@ -1,4 +1,3 @@
-import gtts from 'node-gtts'
 import { readFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
 
@@ -33,6 +32,9 @@ export default async ({ sock, jid, msg, args }) => {
   await sock.sendMessage(jid, { text: `🎤 Generando la voz (${idioma})...`, quoted: msg })
 
   try {
+    // node-gtts arrastra varias dependencias (~1s de carga): se importa solo
+    // cuando alguien pide audio, no en el arranque del bot.
+    const { default: gtts } = await import('node-gtts')
     const tts = gtts(idioma)
     const archivo = join(process.cwd(), 'tmp', `${Date.now()}.mp3`)
     await new Promise((resolve, reject) => {

@@ -1,4 +1,4 @@
-import { obtenerEconomia, restarMonedas, sumarMonedas, anadirExperiencia, marcarUso } from '../database/db.js'
+import { obtenerEconomia, sumarMonedas, anadirExperiencia, marcarUso, oroDisponible, pagarConBanco } from '../database/db.js'
 import { segundosDesde, formatearNumero, recargaActiva } from '../lib/economia.js'
 
 const AYUDA = `🎰 *Casino*
@@ -48,9 +48,8 @@ function girar() {
   return SIMBOLOS[0]
 }
 
-/** Gestiona la apuesta: devuelve false si el usuario no tiene saldo */
+/** Gestiona la apuesta: descuenta cartera y, si falta, banco. Devuelve null si no alcanza */
 async function apostar(sock, jid, msg, quien, cantidad) {
-  const eco = obtenerEconomia(quien)
   if (cantidad < APUESTA_MINIMA) {
     await sock.sendMessage(jid, {
       text: `💸 La apuesta mínima es *${APUESTA_MINIMA}* oro.`,
@@ -58,15 +57,29 @@ async function apostar(sock, jid, msg, quien, cantidad) {
     })
     return null
   }
-  if (eco.monedas < cantidad) {
+
+  const saldo = oroDisponible(quien)
+  if (saldo.total < cantidad) {
     await sock.sendMessage(jid, {
-      text: `💸 No tienes suficientes oro. Tienes *${formatearNumero(eco.monedas)}*.`,
+      text:
+        `💸 No tienes suficiente oro para esa apuesta.\n` +
+        `│ Cartera: *${formatearNumero(saldo.enMano)}* · Banco: *${formatearNumero(saldo.enBanco)}*`,
       quoted: msg,
     })
     return null
   }
-  restarMonedas(quien, cantidad, 'casino', 'Apuesta')
-  return eco
+
+  const pago = pagarConBanco(quien, cantidad, 'casino', 'Apuesta')
+  if (!pago.ok) return null
+
+  if (pago.delBanco > 0) {
+    await sock.sendMessage(jid, {
+      text: `🏦 La cartera no alcanzaba: usé *${formatearNumero(pago.delBanco)}* oro del banco.`,
+      quoted: msg,
+    })
+  }
+
+  return obtenerEconomia(quien)
 }
 
 export default async ({ sock, jid, msg, args, sender }) => {

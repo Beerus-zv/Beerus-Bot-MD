@@ -18,7 +18,7 @@ import { enviarCartaPersonaje } from '../lib/imagenes.js'
 export default async ({ sock, jid, msg, sender }) => {
   const quien = sender || jid
 
-  // Cooldown de reclamo (20 min, misma clave que /waifu claim)
+  // Cooldown de reclamo (15 min, misma clave que /waifu claim)
   const espera = recargaActiva(quien, 'claim')
   if (espera) {
     await sock.sendMessage(jid, { text: espera, quoted: msg })

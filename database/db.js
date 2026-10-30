@@ -34,7 +34,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS mensajes_grupo (chat TEXT NOT NULL, usuario TEXT NOT NULL, cuenta INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (chat, usuario));
   CREATE TABLE IF NOT EXISTS historial_matrimonio (id INTEGER PRIMARY KEY AUTOINCREMENT, jid TEXT NOT NULL, pareja TEXT NOT NULL, tipo TEXT NOT NULL, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')));
   CREATE TABLE IF NOT EXISTS sugerencias (id INTEGER PRIMARY KEY AUTOINCREMENT, jid TEXT NOT NULL, texto TEXT NOT NULL, estado TEXT NOT NULL DEFAULT 'pendiente', creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')));
-  CREATE TABLE IF NOT EXISTS uno_partidas (id INTEGER PRIMARY KEY AUTOINCREMENT, chat TEXT NOT NULL, estado TEXT, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')));
+  CREATE TABLE IF NOT EXISTS uno_partidas (id INTEGER PRIMARY KEY AUTOINCREMENT, grupo TEXT NOT NULL, estado TEXT NOT NULL DEFAULT 'esperando', creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')));
   CREATE TABLE IF NOT EXISTS uno_jugadores (partida_id INTEGER NOT NULL, jid TEXT NOT NULL, PRIMARY KEY (partida_id, jid));
   CREATE TABLE IF NOT EXISTS welcome (grupo TEXT NOT NULL, tipo TEXT NOT NULL, texto TEXT, imagen TEXT, audio TEXT, activo INTEGER NOT NULL DEFAULT 1, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')), PRIMARY KEY (grupo, tipo));
   CREATE TABLE IF NOT EXISTS ajustes (clave TEXT PRIMARY KEY, valor TEXT);
@@ -46,6 +46,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS vip_log (id INTEGER PRIMARY KEY AUTOINCREMENT, jid TEXT NOT NULL, accion TEXT NOT NULL, razon TEXT, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')));
   CREATE TABLE IF NOT EXISTS ultima_waifu (chat TEXT PRIMARY KEY, personaje_id INTEGER NOT NULL, nombre TEXT, enviado TEXT NOT NULL DEFAULT (datetime('now','localtime')));
   CREATE TABLE IF NOT EXISTS ahorcado (grupo TEXT NOT NULL, estado TEXT, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')));
+  CREATE TABLE IF NOT EXISTS poker (chat TEXT NOT NULL, estado TEXT, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')));
   CREATE TABLE IF NOT EXISTS adivinar (jid TEXT NOT NULL, numero INTEGER NOT NULL, maximo INTEGER NOT NULL, intentos INTEGER NOT NULL DEFAULT 0, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')));
   CREATE TABLE IF NOT EXISTS recarga (jid TEXT NOT NULL, comando TEXT NOT NULL, ultimo TEXT NOT NULL DEFAULT (datetime('now','localtime')), PRIMARY KEY (jid, comando));
   CREATE TABLE IF NOT EXISTS nsfw (chat TEXT PRIMARY KEY, activo INTEGER NOT NULL DEFAULT 0);
@@ -69,6 +70,25 @@ try { db.exec('ALTER TABLE antilink ADD COLUMN activo INTEGER NOT NULL DEFAULT 0
 try { db.exec('ALTER TABLE antilink ADD COLUMN accion TEXT NOT NULL DEFAULT "kick"') } catch {}
 try { db.exec('ALTER TABLE antilink ADD COLUMN whitelist TEXT') } catch {}
 try { db.exec('ALTER TABLE antilink RENAME COLUMN grupo TO chat') } catch {}
+
+// UNO: instalaciones viejas guardaban el grupo en la columna `chat`.
+// Se renombra a `grupo` (la base actual ya usa ese nombre) para que todas
+// las consultas funcionen igual en cualquier instalacion.
+try { db.exec('ALTER TABLE uno_partidas RENAME COLUMN chat TO grupo') } catch {}
+
+// UNO: columnas que faltaban para guardar la partida completa
+try { db.exec("ALTER TABLE uno_partidas ADD COLUMN creador TEXT NOT NULL DEFAULT ''") } catch {}
+try { db.exec('ALTER TABLE uno_partidas ADD COLUMN apuesta INTEGER NOT NULL DEFAULT 0') } catch {}
+try { db.exec("ALTER TABLE uno_partidas ADD COLUMN mazo TEXT NOT NULL DEFAULT '[]'") } catch {}
+try { db.exec('ALTER TABLE uno_partidas ADD COLUMN color TEXT') } catch {}
+try { db.exec('ALTER TABLE uno_partidas ADD COLUMN ultima TEXT') } catch {}
+try { db.exec('ALTER TABLE uno_partidas ADD COLUMN turno TEXT') } catch {}
+try { db.exec('ALTER TABLE uno_partidas ADD COLUMN direccion INTEGER NOT NULL DEFAULT 1') } catch {}
+try { db.exec('ALTER TABLE uno_jugadores ADD COLUMN mano TEXT') } catch {}
+try { db.exec('ALTER TABLE uno_jugadores ADD COLUMN puntos INTEGER NOT NULL DEFAULT 0') } catch {}
+try { db.exec('ALTER TABLE uno_jugadores ADD COLUMN pasado INTEGER NOT NULL DEFAULT 0') } catch {}
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_uno_partidas_grupo ON uno_partidas(grupo, estado)') } catch {}
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_uno_jugadores_partida ON uno_jugadores(partida_id)') } catch {}
 
 // JIDs antiguos con '+' delante ('+573...@s.whatsapp.net') nunca coincidian
 // al comprobar el acceso. Se reparan (y se descartan si ya existe el limpio).
@@ -252,8 +272,52 @@ export function retirarMonedas(jid, monto) {
   return monto
 }
 
+/** Oro disponible para gastar: cartera y banco */
+export function oroDisponible(jid) {
+  const eco = obtenerEconomia(jid)
+  const banco = obtenerBanco(jid)
+  const enMano = Math.max(0, Number(eco?.monedas) || 0)
+  const enBanco = Math.max(0, Number(banco?.depositado) || 0)
+  return { enMano, enBanco, total: enMano + enBanco }
+}
+
+/**
+ * Cobra un gasto empezando por la cartera y siguiendo por el banco cuando el
+ * disponible no alcanza. Una sola entrada en el log, con lo que salió del banco.
+ * @returns {{ok: boolean, pagado: number, deMano: number, delBanco: number, faltan: number}}
+ */
+export function pagarConBanco(jid, monto, tipo = '', motivo = '') {
+  const total = Math.trunc(Number(monto) || 0)
+  if (!Number.isFinite(total) || total <= 0) {
+    return { ok: true, pagado: 0, deMano: 0, delBanco: 0, faltan: 0 }
+  }
+
+  const { enMano, enBanco } = oroDisponible(jid)
+  if (enMano + enBanco < total) {
+    return { ok: false, pagado: 0, deMano: 0, delBanco: 0, faltan: total - enMano - enBanco }
+  }
+
+  const delBanco = Math.min(enBanco, Math.max(0, total - enMano))
+  const deMano = total - delBanco
+
+  if (deMano > 0) {
+    db.prepare('UPDATE economia SET monedas = monedas - ? WHERE jid = ?').run(deMano, jid)
+  }
+  if (delBanco > 0) {
+    db.prepare('UPDATE economia_banco SET depositado = depositado - ? WHERE jid = ?').run(delBanco, jid)
+  }
+
+  try {
+    const nota = delBanco > 0 ? `${motivo} (${delBanco} del banco)` : motivo
+    db.prepare('INSERT INTO economia_log (jid, tipo, monto, motivo) VALUES (?,?,?,?)')
+      .run(jid, tipo || 'pago', -total, nota)
+  } catch {}
+
+  return { ok: true, pagado: total, deMano, delBanco, faltan: 0 }
+}
+
 // Modos
-const MODO_DEFAULT = { bot: 1, economia: 1, gacha: 1, onlyadmin: 0, autoreact: 0 }
+const MODO_DEFAULT = { bot: 1, economia: 1, gacha: 1, onlyadmin: 0, autoreact: 0, autoread: 1 }
 export function modoChat(chat, modo) {
   const fila = db.prepare('SELECT activo FROM modos_chat WHERE chat = ? AND modo = ?').get(chat, modo)
   if (fila) return Boolean(fila.activo)
@@ -423,6 +487,12 @@ export function registrarAccion(grupo, jid, accion, motivo = '', ejecutor = '') 
 export function guardarAhorcado(grupo, estado) { db.prepare('DELETE FROM ahorcado WHERE grupo = ?').run(grupo); db.prepare('INSERT INTO ahorcado (grupo, estado) VALUES (?, ?)').run(grupo, JSON.stringify(estado)) }
 export function obtenerAhorcado(grupo) { const r = db.prepare('SELECT estado FROM ahorcado WHERE grupo = ? ORDER BY creado_en DESC LIMIT 1').get(grupo); try { return r ? JSON.parse(r.estado) : null } catch { return null } }
 export function borrarAhorcado(grupo) { db.prepare('DELETE FROM ahorcado WHERE grupo = ?').run(grupo) }
+
+// Poker (una mesa activa por chat)
+export function guardarPoker(chat, estado) { db.prepare('DELETE FROM poker WHERE chat = ?').run(chat); db.prepare('INSERT INTO poker (chat, estado) VALUES (?, ?)').run(chat, JSON.stringify(estado)) }
+export function obtenerPoker(chat) { const r = db.prepare('SELECT estado FROM poker WHERE chat = ? ORDER BY creado_en DESC LIMIT 1').get(chat); try { return r ? JSON.parse(r.estado) : null } catch { return null } }
+export function borrarPoker(chat) { db.prepare('DELETE FROM poker WHERE chat = ?').run(chat) }
+export function todasLasPoker() { return db.prepare('SELECT chat, estado FROM poker').all() }
 export function guardarAdivinar(jid, numero, maximo, intentos = 0) { db.prepare('INSERT INTO adivinar (jid, numero, maximo, intentos) VALUES (?,?,?,?)').run(jid, numero, maximo, intentos) }
 export function obtenerAdivinar(jid) { return db.prepare('SELECT * FROM adivinar WHERE jid = ?').get(jid) ?? null }
 export function borrarAdivinar(jid) { db.prepare('DELETE FROM adivinar WHERE jid = ?').run(jid) }
@@ -676,19 +746,145 @@ export function setVideoPersonaje(id, url) {
   return true
 }
 
-// ───────────── Stubs auto-generados ─────────────
-export function crearPartidaUno(...args) { return null }
-export function partidaUnoActiva(...args) { return null }
-export function actualizarPartidaUno(...args) { return null }
-export function agregarJugadorUno(...args) { return null }
-export function jugadoresUno(...args) { return null }
-export function actualizarManoUno(...args) { return null }
-export function marcarPasoUno(...args) { return null }
-export function quitarJugadorUno(...args) { return null }
-export function terminarPartidaUno(...args) { return null }
-export function partidasUnoFinalizadas(...args) { return null }
-export function puntosUno(...args) { return null }
-export function topUno(...args) { return null }
+// ───────────── UNO ─────────────
+/** Crea una partida de UNO y devuelve su id */
+export function crearPartidaUno({ grupo, creador = '', apuesta = 0 } = {}) {
+  const r = db.prepare(`
+    INSERT INTO uno_partidas (grupo, estado, creador, apuesta, mazo, color, ultima, turno, direccion)
+    VALUES (?, 'esperando', ?, ?, '[]', NULL, NULL, NULL, 1)
+  `).run(grupo, creador || '', Math.max(0, Math.trunc(Number(apuesta) || 0)))
+  return Number(r.lastInsertRowid)
+}
+
+/** Partida activa (esperando o jugando) de un grupo */
+export function partidaUnoActiva(grupo) {
+  return db.prepare(`
+    SELECT id, grupo, estado, creador, apuesta, mazo, color, ultima, turno, direccion, creado_en
+    FROM uno_partidas
+    WHERE grupo = ? AND estado IN ('esperando', 'jugando')
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(grupo) ?? null
+}
+
+/** Partidas activas en las que participa un jugador (para jugar por privado) */
+export function partidasUnoDeJugador(jid) {
+  return db.prepare(`
+    SELECT p.id, p.grupo, p.estado, p.creador, p.apuesta, p.mazo, p.color, p.ultima, p.turno, p.direccion, p.creado_en
+    FROM uno_partidas p
+    JOIN uno_jugadores j ON j.partida_id = p.id
+    WHERE j.jid = ? AND p.estado IN ('esperando', 'jugando')
+    ORDER BY p.id DESC
+  `).all(jid)
+}
+
+/** Campos que se pueden actualizar de una partida */
+const CAMPOS_PARTIDA_UNO = new Set(['estado', 'mazo', 'color', 'ultima', 'turno', 'direccion', 'apuesta'])
+
+/** Actualiza solo los campos permitidos de una partida */
+export function actualizarPartidaUno(id, cambios = {}) {
+  const asignaciones = []
+  const valores = []
+  for (const [campo, valor] of Object.entries(cambios)) {
+    if (!CAMPOS_PARTIDA_UNO.has(campo)) continue
+    asignaciones.push(`${campo} = ?`)
+    valores.push(valor)
+  }
+  if (!asignaciones.length) return false
+  valores.push(id)
+  const r = db.prepare(`UPDATE uno_partidas SET ${asignaciones.join(', ')} WHERE id = ?`).run(...valores)
+  return r.changes > 0
+}
+
+/** Agrega un jugador a la partida (sin duplicarlo) */
+export function agregarJugadorUno(partidaId, jid, mano = []) {
+  db.prepare(`
+    INSERT INTO uno_jugadores (partida_id, jid, mano, puntos, pasado)
+    VALUES (?, ?, ?, 0, 0)
+    ON CONFLICT(partida_id, jid) DO NOTHING
+  `).run(partidaId, jid, JSON.stringify(Array.isArray(mano) ? mano : []))
+  return true
+}
+
+/** Jugadores de una partida, en orden de entrada */
+export function jugadoresUno(partidaId) {
+  return db.prepare(`
+    SELECT jid, mano, puntos, pasado
+    FROM uno_jugadores
+    WHERE partida_id = ?
+    ORDER BY rowid ASC
+  `).all(partidaId).map((j) => ({
+    jid: j.jid,
+    mano: j.mano || '[]',
+    puntos: Number(j.puntos) || 0,
+    pasado: Boolean(j.pasado),
+  }))
+}
+
+/** Guarda la mano de un jugador */
+export function actualizarManoUno(partidaId, jid, mano) {
+  const r = db.prepare('UPDATE uno_jugadores SET mano = ? WHERE partida_id = ? AND jid = ?')
+    .run(JSON.stringify(Array.isArray(mano) ? mano : []), partidaId, jid)
+  return r.changes > 0
+}
+
+/** Marca o desmarca a un jugador como pasado */
+export function marcarPasoUno(partidaId, jid, pasado) {
+  const r = db.prepare('UPDATE uno_jugadores SET pasado = ? WHERE partida_id = ? AND jid = ?')
+    .run(pasado ? 1 : 0, partidaId, jid)
+  return r.changes > 0
+}
+
+/** Quita a un jugador de la partida */
+export function quitarJugadorUno(partidaId, jid) {
+  const r = db.prepare('DELETE FROM uno_jugadores WHERE partida_id = ? AND jid = ?').run(partidaId, jid)
+  return r.changes > 0
+}
+
+/** Termina o cancela una partida */
+export function terminarPartidaUno(partidaId, estado = 'terminada') {
+  const r = db.prepare('UPDATE uno_partidas SET estado = ? WHERE id = ?').run(estado, partidaId)
+  return r.changes > 0
+}
+
+/** Ultimas partidas finalizadas */
+export function partidasUnoFinalizadas(limite = 10) {
+  const tope = Math.max(1, Math.trunc(Number(limite) || 10))
+  return db.prepare(`
+    SELECT id, grupo, estado, apuesta, creado_en
+    FROM uno_partidas
+    WHERE estado IN ('terminada', 'cancelada')
+    ORDER BY id DESC
+    LIMIT ?
+  `).all(tope)
+}
+
+/** Suma los puntos que gano un jugador en una partida */
+export function sumarPuntosUno(partidaId, jid, puntos) {
+  const suma = Math.max(0, Math.trunc(Number(puntos) || 0))
+  if (!suma) return false
+  const r = db.prepare('UPDATE uno_jugadores SET puntos = puntos + ? WHERE partida_id = ? AND jid = ?')
+    .run(suma, partidaId, jid)
+  return r.changes > 0
+}
+
+/** Puntos acumulados de un jugador */
+export function puntosUno(jid) {
+  return Number(db.prepare('SELECT COALESCE(SUM(puntos), 0) AS total FROM uno_jugadores WHERE jid = ?').get(jid)?.total ?? 0)
+}
+
+/** Clasificacion global de UNO */
+export function topUno(limite = 10) {
+  const tope = Math.max(1, Math.trunc(Number(limite) || 10))
+  return db.prepare(`
+    SELECT jid, SUM(puntos) AS puntos
+    FROM uno_jugadores
+    GROUP BY jid
+    HAVING puntos > 0
+    ORDER BY puntos DESC
+    LIMIT ?
+  `).all(tope)
+}
 
 export function borrarPersonajeGacha(id) { db.prepare('DELETE FROM gacha_personajes WHERE id = ?').run(id); db.prepare('DELETE FROM gacha_claims WHERE personaje_id = ?').run(id); db.prepare('DELETE FROM gacha_inventario WHERE personaje_id = ?').run(id) }
 

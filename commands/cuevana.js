@@ -2,7 +2,6 @@
  * .cuevana <texto> — busca peliculas/series en Cuevana y Cuevana2 (dos proveedores).
  * Usa fetch nativo + parseo HTML con cheerio (node_modules instalado).
  */
-import { load } from 'cheerio'
 
 export default async ({ sock, jid, msg, args }) => {
   const query = String(args[0] || '').trim()
@@ -39,6 +38,9 @@ export default async ({ sock, jid, msg, args }) => {
 }
 
 async function searchPage(url) {
+  // cheerio tarda ~1s en cargar y solo hace falta cuando alguien usa el
+  // comando: se importa aqui para no pagarlo en el arranque del bot.
+  const { load } = await import('cheerio')
   const res = await fetch(url)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const page = await res.text()

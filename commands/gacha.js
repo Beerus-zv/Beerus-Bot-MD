@@ -1,4 +1,13 @@
-import { obtenerMetadata, nombreParticipante, resolverObjetivo, esAdmin, esGrupo } from '../lib/grupo.js'
+import {
+  obtenerMetadata,
+  nombreParticipante,
+  resolverObjetivo,
+  esAdmin,
+  esGrupo,
+  mencionDeParticipantes,
+  tokenMencion,
+  jidUsuario,
+} from '../lib/grupo.js'
 import {
   db,
   obtenerEconomia,
@@ -50,6 +59,29 @@ import { PERSONAJES_POR_SERIE, SERIES_POR_PAGINA } from '../lib/anilist.js'
 import { buscarOImportar, completarPersonajesSeries, personajesDeSerieInternet, listarSeriesInternet, sincronizarRarezas, tirarDeInternet } from '../lib/gacha-internet.js'
 import { elegirRareza } from '../lib/gacha.js'
 import { asegurarOwnerVip, esOwnerMsg } from '../lib/owner.js'
+
+/**
+ * Etiqueta de un usuario para los mensajes de gacha: nombre resuelto (BD) y
+ * mencion real. Sin esto los metadatos del grupo (que solo traen `id`/`lid`)
+ * hacian que el mensaje mostrara el JID crudo.
+ */
+function etiquetaObjetivo(metadata, objetivo) {
+  const mencion = mencionDeParticipantes(metadata?.participants || [], objetivo.jid)
+  const token = mencion?.token || tokenMencion(objetivo.jid)
+  const jidEtiqueta = mencion?.jid || jidUsuario(objetivo.jid)
+
+  const nombre = nombreParticipante(objetivo.participante, (j) => nombreLegible(j, obtenerUsuario))
+  const digitosNombre = String(nombre).replace(/\D/g, '')
+  const digitosToken = String(token).replace(/\D/g, '')
+
+  // Si el nombre resuelto es el propio numero, el token ya lo muestra
+  const soloToken = !digitosNombre || digitosNombre === digitosToken
+
+  return {
+    texto: soloToken ? token : `${nombre} ${token}`,
+    jid: jidEtiqueta,
+  }
+}
 
 const AYUDA = `💞 *Gacha anime*
 
@@ -374,9 +406,10 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
     transferirReclamacion(quien, objetivo.jid, personaje.id)
     quitarDeVenta(quien, personaje.id)
 
-    const nombreTarget = nombreParticipante(objetivo.participante)
+    const etiqueta = etiquetaObjetivo(metadata, objetivo)
     await sock.sendMessage(jid, {
-      text: `💞 Le regalaste *${personaje.nombre}* a *${nombreTarget}*.`,
+      text: `💞 Le regalaste *${personaje.nombre}* a ${etiqueta.texto}.`,
+      mentions: [etiqueta.jid],
       quoted: msg,
     })
     return
@@ -409,9 +442,10 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
       quitarDeVenta(quien, c.personaje_id)
     }
 
-    const nombreTarget = nombreParticipante(objetivo.participante)
+    const etiqueta = etiquetaObjetivo(metadata, objetivo)
     await sock.sendMessage(jid, {
-      text: `💞 Regalaste tus *${claims.length}* personajes a *${nombreTarget}*.`,
+      text: `💞 Regalaste tus *${claims.length}* personajes a ${etiqueta.texto}.`,
+      mentions: [etiqueta.jid],
       quoted: msg,
     })
     marcarUso(quien, 'giveall')
@@ -462,9 +496,12 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
       return
     }
 
+    const etiqueta = etiquetaObjetivo(metadata, objetivo)
+
     if (tieneReclamado(objetivo.jid, pjMio.id)) {
       await sock.sendMessage(jid, {
-        text: `❌ *${nombreParticipante(objetivo.participante)}* ya tiene a *${pjMio.nombre}*.`,
+        text: `❌ ${etiqueta.texto} ya tiene a *${pjMio.nombre}*.`,
+        mentions: [etiqueta.jid],
         quoted: msg,
       })
       return
@@ -473,12 +510,12 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
     transferirReclamacion(quien, objetivo.jid, pjMio.id)
     transferirReclamacion(objetivo.jid, quien, pjSuyo.id)
 
-    const nombreTarget = nombreParticipante(objetivo.participante)
     await sock.sendMessage(jid, {
       text:
         `🔄 *Intercambio completado*\n` +
         `Tú: *${pjMio.nombre}* → *${pjSuyo.nombre}*\n` +
-        `${nombreTarget}: *${pjSuyo.nombre}* → *${pjMio.nombre}*`,
+        `${etiqueta.texto}: *${pjSuyo.nombre}* → *${pjMio.nombre}*`,
+      mentions: [etiqueta.jid],
       quoted: msg,
     })
     marcarUso(quien, 'trade')

@@ -17,10 +17,10 @@ export default async ({ sock, jid, msg, args, sender, esGrupo }) => {
     })
   }
 
-  // Cooldown mensual
+  // Cooldown de 2 semanas
   const vig = recargaActiva(sender, 'vip_gachaclaim')
   if (vig) {
-    return await sock.sendMessage(jid, { text: vig + ' Vuelve en ~30 días.', quoted: msg })
+    return await sock.sendMessage(jid, { text: vig + ' Vuelve en ~2 semanas.', quoted: msg })
   }
 
   const nombre = args.join(' ').trim()
@@ -49,7 +49,7 @@ export default async ({ sock, jid, msg, args, sender, esGrupo }) => {
 
   reclamarPersonaje(sender, personaje.id, null)
 
-  // Marcar cooldown mensual
+  // Marcar cooldown de 2 semanas
   db.prepare('INSERT INTO recarga (jid, comando, ultimo) VALUES (?, ?, datetime(\'now\',\'localtime\')) ON CONFLICT(jid, comando) DO UPDATE SET ultimo = excluded.ultimo').run(sender, 'vip_gachaclaim')
 
   const mensajePropio = obtenerClaimMsg(sender)

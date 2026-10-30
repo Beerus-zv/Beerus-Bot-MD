@@ -17,7 +17,7 @@ const omitir = process.argv.includes('--no-update') || process.env.BEERUS_NO_UPD
 
 if ((AUTO_ACTUALIZAR || forzar) && !omitir) {
   try {
-    actualizarBot({ rama: RAMA_ACTUALIZACION })
+    actualizarBot({ rama: RAMA_ACTUALIZACION, forzar })
   } catch (err) {
     // El actualizador nunca debe impedir que el bot arranque
     console.warn('Error inesperado en el actualizador:', err?.message || err)

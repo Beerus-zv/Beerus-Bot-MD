@@ -34,7 +34,7 @@ export default async ({ sock, jid, msg, commands }) => {
     `✦ *Miembros del club:*\n` +
     `▸ \`${prefijo}vipbadge\` — tu rango VIP\n` +
     `▸ \`${prefijo}vipboost\` — +500 monedas / +200 exp (1/semana)\n` +
-    `▸ \`${prefijo}gachaclaim <nombre>\` — reclamo VIP de personaje (1/mes)\n\n` +
+    `▸ \`${prefijo}gachaclaim <nombre>\` — reclamo VIP de personaje (1 cada 2 semanas)\n\n` +
     `✦ *Solo owner:*\n` +
     `▸ \`${prefijo}vip add @user\` — dar acceso\n` +
     `▸ \`${prefijo}vip remove @user\` — quitar acceso\n\n` +

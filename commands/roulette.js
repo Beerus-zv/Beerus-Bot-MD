@@ -3,7 +3,7 @@
  * Ruleta de 37 casillas: 18 rojas, 18 negras y el 0 verde (destruye la apuesta).
  * Ganar paga 2x.
  */
-import { obtenerEconomia, restarMonedas, sumarMonedas, anadirExperiencia, marcarUso } from '../database/db.js'
+import { obtenerEconomia, sumarMonedas, anadirExperiencia, marcarUso, oroDisponible, pagarConBanco } from '../database/db.js'
 import { formatearNumero, recargaActiva } from '../lib/economia.js'
 
 /** Números rojos de una ruleta real */
@@ -39,7 +39,6 @@ export default async ({ sock, jid, msg, args, sender }) => {
     return
   }
 
-  const eco = obtenerEconomia(quien)
   const cantidad = Number.parseInt(args[1], 10)
 
   if (!cantidad || cantidad <= 0) {
@@ -50,9 +49,12 @@ export default async ({ sock, jid, msg, args, sender }) => {
     return
   }
 
-  if (cantidad > eco.monedas) {
+  const saldo = oroDisponible(quien)
+  if (cantidad > saldo.total) {
     await sock.sendMessage(jid, {
-      text: `💸 No tienes suficiente. Tienes *${formatearNumero(eco.monedas)}* en mano.`,
+      text:
+        `💸 No tienes suficiente oro.\n` +
+        `│ Cartera: *${formatearNumero(saldo.enMano)}* · Banco: *${formatearNumero(saldo.enBanco)}*`,
       quoted: msg,
     })
     return
@@ -62,10 +64,16 @@ export default async ({ sock, jid, msg, args, sender }) => {
   const colorSalio = colorDe(numero)
   const gano = colorSalio === color
 
-  // La apuesta sale de la mano; si gana vuelve multiplicada
-  restarMonedas(quien, cantidad, 'apuesta', 'Ruleta')
+  // La apuesta sale de la cartera; si no alcanza, del banco
+  const pago = pagarConBanco(quien, cantidad, 'apuesta', 'Ruleta')
 
   let mensajeFinal = ''
+  if (!pago.ok) {
+    await sock.sendMessage(jid, { text: '💸 No se pudo cobrar la apuesta.', quoted: msg })
+    return
+  }
+
+  const notaBanco = pago.delBanco > 0 ? `\n🏦 Del banco: *${formatearNumero(pago.delBanco)}* oro.` : ''
   if (gano) {
     const premio = cantidad * 2
     sumarMonedas(quien, premio, 'premio', 'Ruleta')
@@ -85,7 +93,7 @@ export default async ({ sock, jid, msg, args, sender }) => {
   marcarUso(quien, 'roulette')
 
   await sock.sendMessage(jid, {
-    text: `${mensajeFinal}\n💰 Saldo: *${formatearNumero(obtenerEconomia(quien).monedas)}*`,
+    text: `${mensajeFinal}${notaBanco}\n💰 Saldo: *${formatearNumero(obtenerEconomia(quien).monedas)}*`,
     quoted: msg,
   })
 }

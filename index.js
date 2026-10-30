@@ -1,5 +1,4 @@
 import makeWASocket, {
-  useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
@@ -15,6 +14,7 @@ import { db, contarMensaje, contarMensajeUsuario, alertasActivas, listarAlertas,
 import { obtenerMetadata, esAdmin, esMencionDelBot, extraerComandoTrasMencion, extraerPreguntaTrasMencion, tokenMencion, jidUsuario } from './lib/grupo.js'
 import { log, recordarGrupo, necesitaNombre, intentoNombre } from './lib/logger.js'
 import { autoReaccionar } from './lib/autoreact.js'
+import { marcarLeido } from './lib/autoread.js'
 import { categoriaDe } from './lib/categorias.js'
 import { revisarAntilink } from './lib/antilink.js'
 import { procesarCambioParticipantes } from './lib/bienvenida.js'
@@ -24,11 +24,13 @@ import { sincronizarBanners } from './lib/banners-menu.js'
 import { sincronizarRarezas } from './lib/gacha-internet.js'
 import { adquirirBloqueo, liberarBloqueo } from './lib/instancia.js'
 import { cargarComandos } from './lib/loader.js'
+import { useSqliteAuthState } from './lib/auth-state.js'
 import { COMANDOS_VIP, esVip, jidsDe } from './lib/vip.js'
 
 // ── Tarifa de oro por comando (categorías pagadas) ──
 const COSTE_COMANDO_ORO = 10
-const CATEGORIAS_COSTO_ORO = new Set(['gacha', 'descargas', 'entretenimiento', 'nsfw', 'juegos', 'multimedia', 'internet', 'interacciones', 'ia'])
+// Economía y juegos no cobran por invocarse: solo cuesta lo que se apuesta
+const CATEGORIAS_COSTO_ORO = new Set(['gacha', 'descargas', 'entretenimiento', 'nsfw', 'multimedia', 'internet', 'interacciones', 'ia'])
 
 // ───────────── Configuración ─────────────
 import { BOT_NAME, PREFIX, AUTH_DIR, MENCIONES_BOT, LOG_LEVEL, METODO_VINCULACION, NUMERO_VINCULACION, NAVEGADOR_WA } from './config.js'
@@ -95,6 +97,7 @@ import { fabricarModo } from './commands/modos.js'
 
 // ───────────── ComandosTomados de MEGA-MD ─────────────
 import { charlarConBeerus } from './commands/ia.js'
+import { esJugadaUno } from './commands/uno.js'
 import { fabricarInteraccion } from './commands/interaccion.js'
 // ── Lote Neko: banco, sociales y utilidades ──
 
@@ -173,6 +176,7 @@ const nekomimi = fabricarImagenNSFW('nekomimi')
 const botModo = fabricarModo('bot')
 const economiaModo = fabricarModo('economia')
 const onlyadmin = fabricarModo('onlyadmin')
+const autoreadModo = fabricarModo('autoread')
 
 // Busquedas por fuente preferida
 const danbooru = fabricarBusquedaNSFW('danbooru.donmai.us')
@@ -205,6 +209,8 @@ const commands = {
   unban: C.unban,
   kick: C.kick,
   add: C.add,
+  delete: C.delete,
+  del: C.delete,
   listadmins: C.listadmins,
   listmembers: C.listmembers,
   antidelete: C.antidelete,
@@ -263,6 +269,7 @@ const commands = {
   acertijo: C.acertijo,
   sopa: C.sopa,
   ahorcado: C.ahorcado,
+  poker: C.poker,
   calcular: C.calcular,
   estilizar: C.estilizar,
   qr: C.qr,
@@ -546,6 +553,8 @@ const commands = {
   ac: C.acertijo,
   sp: C.sopa,
   ah: C.ahorcado,
+  pkr: C.poker,
+  holdem: C.poker,
   cs: C.casino,
   gr: conSub(C.gacha, 'random'),
   gc: C.gacha,
@@ -692,6 +701,7 @@ const commands = {
   bot: botModo,
   economia: economiaModo,
   onlyadmin,
+  autoread: autoreadModo,
   modos: C.modos,
   autoreact: C.autoreact,
   msgcount: C.msgcount,
@@ -707,6 +717,9 @@ const commands = {
   groupimg: C.groupimage,
   setgroupimage: C.groupimage,
   warnlimit: C.setwarnlimit,
+  leido: autoreadModo,
+  leidos: autoreadModo,
+  marcarleido: autoreadModo,
 }
 
 // ───────────── Utilidades ─────────────
@@ -802,6 +815,9 @@ let intentosReconexion = 0
 let intentosReemplazo = 0
 // Metodo de vinculacion elegido (se decide una sola vez y se reutiliza al reconectar)
 let vinculacion = null
+// Estado de autenticacion (SQLite). Se abre una vez y se reutiliza en cada
+// reconexion: reabrir la base en cada intento dejaba handles sueltos.
+let authSesion = null
 
 const MAX_INTENTOS = 15
 const ESPERA_BASE = 3000
@@ -840,24 +856,94 @@ function apagar(mensaje) {
     // Ignorado
   }
   cerrarSocket(socketActivo)
+  try {
+    authSesion?.cerrar()
+  } catch {
+    // la base ya estaba cerrada
+  }
   liberarBloqueo()
   process.exit(0)
 }
 
+// ───────────── Version de WhatsApp ─────────────
+// fetchLatestBaileysVersion() consulta raw.githubusercontent.com. Si la red va
+// lenta o el host esta bloqueado, la promesa puede tardar decenas de segundos
+// y el socket ni se crea: el bot parece "colgado" antes de conectar. Se limita
+// la espera y se reutiliza la ultima version buena guardada en disco.
+const VERSION_WA_ARCHIVO = path.resolve('data', 'wa-version.json')
+const ESPERA_VERSION_WA_SIN_CACHE = 4000
+const ESPERA_VERSION_WA_CON_CACHE = 1200
+
+function leerVersionGuardada() {
+  try {
+    const datos = JSON.parse(fs.readFileSync(VERSION_WA_ARCHIVO, 'utf8'))
+    if (Array.isArray(datos?.version) && datos.version.length === 3) return datos.version
+  } catch {
+    // sin cache: se consulta y se guarda
+  }
+  return null
+}
+
+function guardarVersionWa(version) {
+  try {
+    fs.mkdirSync(path.dirname(VERSION_WA_ARCHIVO), { recursive: true })
+    fs.writeFileSync(
+      VERSION_WA_ARCHIVO,
+      JSON.stringify({ version, guardado: new Date().toISOString() })
+    )
+  } catch {
+    // la cache es opcional
+  }
+}
+
+/** Version de WhatsApp con espera acotada. undefined = la que trae Baileys. */
+async function versionDeWhatsApp() {
+  const guardada = leerVersionGuardada()
+
+  const consulta = fetchLatestBaileysVersion()
+    .then(({ version }) => {
+      if (Array.isArray(version) && version.length === 3) guardarVersionWa(version)
+      return version || null
+    })
+    .catch(() => null)
+
+  let temporizador
+  const limite = new Promise((resolve) => {
+    temporizador = setTimeout(() => resolve(null), guardada ? ESPERA_VERSION_WA_CON_CACHE : ESPERA_VERSION_WA_SIN_CACHE)
+  })
+
+  const version = await Promise.race([consulta, limite])
+  clearTimeout(temporizador)
+
+  if (version) return version
+  if (guardada) {
+    log.aviso(`Version de WhatsApp: sin respuesta del servidor, uso la guardada (${guardada.join('.')}).`)
+    return guardada
+  }
+  log.aviso('Version de WhatsApp: sin respuesta del servidor, uso la que trae Baileys.')
+  return undefined
+}
+
+/** Abre el estado de auth una sola vez y lo reutiliza en las reconexiones */
+async function obtenerAuthSesion() {
+  if (!authSesion) authSesion = await useSqliteAuthState(AUTH_DIR)
+  return authSesion
+}
+
 async function startBot() {
+  const inicioArranque = performance.now()
+
   // Si ya hay un socket vivo, se cierra antes de crear otro
   if (socketActivo) {
     cerrarSocket(socketActivo)
     socketActivo = null
   }
 
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR)
-  const { version } = await fetchLatestBaileysVersion()
+  const { state, saveCreds, tieneSesion } = await obtenerAuthSesion()
+  const version = await versionDeWhatsApp()
 
-  // Verificar si ya existe una sesión guardada (archivos de credenciales)
-  // Si hay credenciales, no preguntar por el método de vinculación
-  const credsPath = path.join(AUTH_DIR, 'creds.json')
-  const tieneSesionGuardada = fs.existsSync(credsPath)
+  // Si hay credenciales guardadas no se pregunta por el metodo de vinculacion
+  const tieneSesionGuardada = tieneSesion
 
   // Solo si NO hay sesión guardada Y no se ha elegido método: preguntar QR/código
   if (!tieneSesionGuardada && !vinculacion) {
@@ -869,7 +955,7 @@ async function startBot() {
   }
 
   const sock = makeWASocket({
-    version,
+    ...(version ? { version } : {}),
     logger,
     browser: [BOT_NAME, NAVEGADOR_WA, '2.1.0'], // nombre que verás en "Dispositivos vinculados"
     auth: {
@@ -879,6 +965,8 @@ async function startBot() {
   })
 
   socketActivo = sock
+
+  log.sistema(`⚡ Socket listo en ${Math.round(performance.now() - inicioArranque)} ms`)
 
   // Guardar credenciales cada vez que cambien
   sock.ev.on('creds.update', saveCreds)
@@ -1029,6 +1117,9 @@ const userSpamData = {}
 
         // Ignora los mensajes que envió el propio bot (evita bucles)
         if (vieneDelBot(msg)) return
+
+        // Autoread: deja el chat sin contadores de no leídos
+        marcarLeido(sock, msg)
 
         // Quién envió el mensaje (en grupos viene en participant)
         const sender = msg.key.fromMe ? sock.user?.id : msg.key.participant
@@ -1245,6 +1336,31 @@ const userSpamData = {}
 
         if (msg.messageStubType && jid?.endsWith('@g.us') && modoChat(jid, 'detect')) {
           try { await C.autodetect({ sock, jid, msg, args: [], sender: msg.key.participant || msg.key.fromMe ? sock.user?.id : msg.key.remoteJid, esGrupo: true }) } catch {}
+        }
+
+        // Jugada de UNO sin prefijo en el privado: "R6" equivale a ".uno R6"
+        if (!esGrupo && !PREFIX.some((p) => texto.startsWith(p)) && esJugadaUno(texto)) {
+          const terminar = log.comando({ nombre: 'uno (jugada)', args: [texto], jid })
+          try {
+            await C.uno({
+              sock,
+              jid,
+              msg,
+              args: [texto],
+              sender,
+              esGrupo: false,
+              commands: C,
+              BOT_NAME,
+              PREFIX,
+              db,
+              jugadaSuelta: true,
+            })
+            terminar()
+          } catch (err) {
+            terminar(err)
+            log.error('Error en la jugada suelta de UNO', err)
+          }
+          return
         }
 
         const prefijo = PREFIX.find((p) => texto.startsWith(p))
