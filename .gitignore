@@ -18,3 +18,8 @@ tmp/
 *.log
 npm-debug.log*
 
+# Mapa de dependencias generado por scripts/graphify.mjs
+graphify-out/
+
+#OpenCode
+.opencode/
