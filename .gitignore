@@ -20,6 +20,10 @@ npm-debug.log*
 
 # Mapa de dependencias generado por scripts/graphify.mjs
 graphify-out/
+graphify/
+
+# Instrucciones locales del agente
+AGENTS.md
 
 #OpenCode
 .opencode/
