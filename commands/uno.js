@@ -1,11 +1,14 @@
-import { obtenerMetadata, esGrupo, nombreParticipante, resolverObjetivo } from '../lib/grupo.js'
+import { obtenerMetadata, esGrupo, nombreParticipante, resolverObjetivo, jidUsuario, digitosJid, mencionDeParticipantes } from '../lib/grupo.js'
+import { pnParaLid } from '../lib/owner.js'
 import {
   obtenerEconomia,
-  restarMonedas,
   sumarMonedas,
+  oroDisponible,
+  pagarConBanco,
   obtenerUsuario,
   crearPartidaUno,
   partidaUnoActiva,
+  partidasUnoDeJugador,
   actualizarPartidaUno,
   agregarJugadorUno,
   jugadoresUno,
@@ -14,6 +17,7 @@ import {
   quitarJugadorUno,
   terminarPartidaUno,
   partidasUnoFinalizadas,
+  sumarPuntosUno,
   puntosUno,
   topUno,
 } from '../database/db.js'
@@ -32,21 +36,113 @@ import { nombreLegible, formatearNumero } from '../lib/economia.js'
 
 const AYUDA = `🃏 *UNO*
 
-*Uso:*
+*En el grupo:*
 • \`/uno create <apuesta>\` - Crear partida
 • \`/uno join\` - Unirse a la partida
 • \`/uno start\` - Empezar la partida
-• \`/uno play <color> <valor>\` - Jugar una carta (\`+4\`, \`skip\`, \`reverse\`)
-• \`/uno draw\` - Robar una carta
-• \`/uno hand\` - Ver tu mano
 • \`/uno leave\` - Salir de la partida
 • \`/uno stats\` - Tus estadísticas
 • \`/uno history\` - Últimas partidas
-• \`/uno top\` - Clasificación global`
+• \`/uno top\` - Clasificación global
+
+*Por privado (tus jugadas):*
+• \`/uno R7\` - Jugar rojo 7 (color + valor)
+• \`/uno AS\` - Azul skip · \`/uno VR\` verde reverse · \`/uno Y+2\` amarillo +2
+• \`/uno CV\` - Comodín verde · \`/uno C+A\` comodín +4 azul
+• \`/uno draw\` - Robar una carta
+• \`/uno hand\` - Ver tu mano
+
+_R ojo · A zul · V erde · M amarillo · C comodín. S skip · R reverse · +2 · +4._
+
+_El grupo solo anuncia las cartas jugadas: tu mano siempre es privada._`
+
+/** JSON seguro: nunca lanza; devuelve el valor por defecto si el texto no sirve */
+function leerJson(texto, porDefecto = null) {
+  if (texto === null || texto === undefined) return porDefecto
+  try {
+    const valor = JSON.parse(texto)
+    return valor ?? porDefecto
+  } catch {
+    return porDefecto
+  }
+}
 
 /** Lee la mano de un jugador */
 function leerMano(fila) {
-  try { return JSON.parse(fila.mano || '[]') } catch { return [] }
+  const mano = leerJson(fila?.mano, [])
+  return Array.isArray(mano) ? mano : []
+}
+
+/** Mazo guardado como JSON: siempre una lista de cartas */
+function leerMazo(texto) {
+  const mazo = leerJson(texto, [])
+  return Array.isArray(mazo) ? mazo : []
+}
+
+/** Carta superior guardada como JSON: siempre una carta o null */
+function leerUltima(texto) {
+  const carta = leerJson(texto, null)
+  return carta && typeof carta === 'object' && !Array.isArray(carta) ? carta : null
+}
+
+/**
+ * Coacciona una fila de uno_partidas a la forma que espera el comando.
+ * Devuelve null si la fila no se puede jugar (formato anterior o corrupto).
+ */
+function normalizarPartida(crudo) {
+  if (!crudo || typeof crudo !== 'object') return null
+
+  const id = Math.trunc(Number(crudo.id))
+  if (!Number.isFinite(id) || id <= 0) return null
+  if (crudo.estado && !['esperando', 'jugando', 'terminada', 'cancelada'].includes(crudo.estado)) return null
+
+  const apuesta = Math.trunc(Number(crudo.apuesta))
+  const direccion = Math.trunc(Number(crudo.direccion))
+  const ultima = leerUltima(crudo.ultima)
+
+  return {
+    id,
+    grupo: typeof crudo.grupo === 'string' ? crudo.grupo : '',
+    estado: crudo.estado || 'esperando',
+    creador: typeof crudo.creador === 'string' ? crudo.creador : '',
+    apuesta: Number.isFinite(apuesta) && apuesta > 0 ? apuesta : 0,
+    mazo: JSON.stringify(leerMazo(crudo.mazo)),
+    color: typeof crudo.color === 'string' ? normalizarColor(crudo.color) : null,
+    ultima: ultima ? JSON.stringify(ultima) : null,
+    turno: typeof crudo.turno === 'string' ? crudo.turno : null,
+    direccion: direccion === -1 ? -1 : 1,
+    creado_en: crudo.creado_en ?? null,
+  }
+}
+
+/** Cierra una fila inservible para que no bloquee partidas nuevas */
+function cerrarInservible(crudo) {
+  const id = Math.trunc(Number(crudo?.id))
+  if (Number.isFinite(id) && id > 0) terminarPartidaUno(id, 'cancelada')
+}
+
+/** Partida activa del grupo, ya validada */
+function partidaDeGrupo(grupo) {
+  const crudo = partidaUnoActiva(grupo)
+  if (!crudo) return null
+
+  const partida = normalizarPartida(crudo)
+  if (!partida) {
+    cerrarInservible(crudo)
+    return null
+  }
+  return partida
+}
+
+/** Partidas activas del jugador, ya validadas */
+function partidasDelJugador(jid) {
+  const partidas = []
+  for (const crudo of partidasUnoDeJugador(jid)) {
+    const partida = normalizarPartida(crudo)
+    if (partida) partidas.push(partida)
+    else cerrarInservible(crudo)
+  }
+  return partidas
 }
 
 /** Lista de jugadores con su mano, en orden de turno */
@@ -66,28 +162,535 @@ function siguienteTurno(jugadores, actual, direccion) {
   return jugadores[(indice + direccion + jugadores.length * 2) % jugadores.length].jid
 }
 
-export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
-  const sub = String(args[0] || 'help').toLowerCase()
-  const resto = args.slice(1)
+// ───────────── Formato de las cartas ─────────────
+/** Letra de cada color para el codigo corto de la carta */
+const LETRA_COLOR = { rojo: 'R', azul: 'A', verde: 'V', amarillo: 'M', comodin: 'C' }
+
+/** Codigo corto de una carta: R1, A+2, VS, MR, C, C+4 */
+function codigoCarta(carta) {
+  if (!carta) return '??'
+  if (carta.tipo === 'comodin') return 'C'
+  if (carta.tipo === '+4') return 'C+4'
+  const letra = LETRA_COLOR[carta.color] || '?'
+  if (carta.tipo === 'skip') return `${letra}S`
+  if (carta.tipo === 'reverse') return `${letra}R`
+  if (carta.tipo === '+2') return `${letra}+2`
+  return `${letra}${carta.valor}`
+}
+
+// ───────────── Codigo corto de las jugadas ─────────────
+/** Inicial de cada color dentro del codigo de jugada */
+const INICIAL_COLOR = {
+  R: 'rojo',
+  A: 'azul',
+  B: 'azul',
+  V: 'verde',
+  G: 'verde',
+  M: 'amarillo',
+  Y: 'amarillo',
+  C: 'comodin',
+  W: 'comodin',
+}
+
+/** Nombre completo del color: tambien vale escribirlo entero */
+const NOMBRE_COLOR = {
+  ROJO: 'rojo',
+  AZUL: 'azul',
+  VERDE: 'verde',
+  AMARILLO: 'amarillo',
+  COMODIN: 'comodin',
+  WILD: 'comodin',
+}
+
+/** Valor escrito en corto: S skip, R reverse, +2, +4 */
+const ALIAS_VALOR = {
+  S: 'skip',
+  SKIP: 'skip',
+  X: 'skip',
+  R: 'reverse',
+  REV: 'reverse',
+  REVERSE: 'reverse',
+  INV: 'reverse',
+  '+2': '+2',
+  '2+': '+2',
+  D2: '+2',
+  '+4': '+4',
+  '4+': '+4',
+  D4: '+4',
+}
+
+/** Comandos de `/uno`: un codigo de carta nunca se confunde con ellos */
+const COMANDOS_UNO = new Set([
+  'help', 'ayuda',
+  'create', 'crear', 'new',
+  'join', 'unirse', 'entrar',
+  'start', 'empezar', 'begin',
+  'leave', 'salir', 'exit',
+  'hand', 'mano', 'cards',
+  'play', 'jugar', 'card', 'carta',
+  'draw', 'robar', 'pick',
+  'stats', 'estadisticas', 'stat',
+  'history', 'historial',
+  'top', 'leaderboard', 'ranking',
+])
+
+/**
+ * Separa el color del principio del codigo: "R7" → { color: 'rojo', resto: '7' }.
+ * Los nombres completos van primero porque AMARILLO tambien empieza por A.
+ */
+function separarColor(codigo) {
+  if (!codigo) return null
+
+  for (const nombre of Object.keys(NOMBRE_COLOR)) {
+    if (codigo.startsWith(nombre)) {
+      return { color: NOMBRE_COLOR[nombre], resto: codigo.slice(nombre.length) }
+    }
+  }
+
+  const inicial = INICIAL_COLOR[codigo[0]]
+  if (inicial) return { color: inicial, resto: codigo.slice(1) }
+  return null
+}
+
+/**
+ * Lee la jugada escrita por el jugador.
+ *   R7   rojo 7           AS   azul skip
+ *   VR   verde reverse    Y+2  amarillo +2
+ *   CV   comodin verde    C+A  comodin +4 azul
+ *   C    comodin sin color (el bot lo pide despues)
+ * Tambien acepta el texto largo: "rojo 7", "azul skip", "+4 verde".
+ * @returns {{tipo: string, color: string|null, valor: string|null, colorElegido: string|null}|null}
+ */
+function leerJugada(texto) {
+  const codigo = String(texto || '').toUpperCase().replace(/[\s_-]+/g, '')
+  if (!codigo) return null
+
+  // +4 escrito por delante: "+4 verde", "+4V"
+  if (codigo.startsWith('+4')) {
+    const elegido = separarColor(codigo.slice(2))
+    // Lo que sigue debe ser un color o nada: "+4casa" no es una jugada
+    if (codigo.length > 2 && (!elegido || elegido.resto)) return null
+    return {
+      tipo: '+4',
+      color: 'comodin',
+      valor: '+4',
+      colorElegido: elegido && elegido.color !== 'comodin' ? elegido.color : null,
+    }
+  }
+
+  const separado = separarColor(codigo)
+  const color = separado?.color ?? null
+  const resto = separado?.resto ?? codigo
+
+  // Comodin: lo que sigue es el color elegido; con + delante es el +4
+  if (color === 'comodin') {
+    const masCuatro = resto.startsWith('+')
+    let elegidoTexto = masCuatro ? resto.slice(1) : resto
+    if (masCuatro && elegidoTexto.startsWith('4')) elegidoTexto = elegidoTexto.slice(1)
+
+    const elegido = elegidoTexto ? separarColor(elegidoTexto) : null
+    // "CASA", "CARRO" y demas palabras no son jugadas: sobra texto tras el color
+    if (elegidoTexto && (!elegido || elegido.resto)) return null
+    return {
+      tipo: masCuatro ? '+4' : 'comodin',
+      color: 'comodin',
+      valor: masCuatro ? '+4' : 'comodin',
+      colorElegido: elegido && elegido.color !== 'comodin' ? elegido.color : null,
+    }
+  }
+
+  if (!resto) return color ? { tipo: 'numero', color, valor: null, colorElegido: null } : null
+
+  const valor = /^\d+$/.test(resto) ? String(Number(resto)) : ALIAS_VALOR[resto] ?? null
+  if (!valor) return null
+
+  return { tipo: 'numero', color, valor, colorElegido: null }
+}
+
+/**
+ * ¿El texto es una jugada de UNO escrita a mano? Sirve para aceptar `R6` en el
+ * privado sin prefijo. Devuelve false para palabras sueltas como "hola".
+ */
+export function esJugadaUno(texto) {
+  const jugada = leerJugada(texto)
+  if (!jugada || !jugada.color) return false
+  return Boolean(jugada.valor) || jugada.tipo === 'comodin' || jugada.tipo === '+4'
+}
+
+// ───────────── Turnos con tiempo ─────────────
+/**
+ * Segundos que tiene cada jugador para jugar. Se puede ajustar con la
+ * variable UNO_TURNO_SEGUNDOS (util para pruebas con partidas rapidas).
+ */
+const SEGUNDOS_TURNO = Math.max(5, Math.trunc(Number(process.env.UNO_TURNO_SEGUNDOS) || 60))
+/** Tiempos agotados seguidos antes de cancelar una partida abandonada */
+const MAX_TIEMPOS_SEGUIDOS = 6
+
+/** Temporizador activo por grupo */
+const temporizadores = new Map()
+/** Turnos seguidos agotados por grupo */
+const tiemposSeguidos = new Map()
+
+/** Texto legible del tiempo por turno */
+function textoTiempo() {
+  if (SEGUNDOS_TURNO >= 60 && SEGUNDOS_TURNO % 60 === 0) {
+    const minutos = SEGUNDOS_TURNO / 60
+    return `${minutos} minuto${minutos === 1 ? '' : 's'}`
+  }
+  return `${SEGUNDOS_TURNO} segundos`
+}
+
+function cancelarTurno(grupo) {
+  const activo = temporizadores.get(grupo)
+  if (activo) clearTimeout(activo)
+  temporizadores.delete(grupo)
+}
+
+function reiniciarTiempos(grupo) {
+  tiemposSeguidos.delete(grupo)
+}
+
+/**
+ * Cache de participantes del grupo: sirve para traducir un LID al numero de
+ * telefono real y poder escribirle por privado. Se refresca cada 5 minutos.
+ */
+const cacheParticipantes = new Map()
+const TTL_PARTICIPANTES = 5 * 60 * 1000
+
+async function participantesGrupo(sock, grupo) {
+  const ahora = Date.now()
+  const guardado = cacheParticipantes.get(grupo)
+  if (guardado && guardado.expira > ahora) return guardado.lista
+
+  try {
+    const metadata = await obtenerMetadata(sock, grupo)
+    const lista = metadata?.participants || []
+    cacheParticipantes.set(grupo, { lista, expira: ahora + TTL_PARTICIPANTES })
+    return lista
+  } catch {
+    return []
+  }
+}
+
+/**
+ * JID al que se le puede escribir por privado. En grupos el remitente puede
+ * llegar como LID; se intenta traducir al numero de telefono. Como ultimo
+ * recurso se usa el propio LID (Baileys tambien sabe escribirle ahi).
+ */
+async function jidPrivado(sock, grupo, jugador) {
+  const limpio = jidUsuario(jugador)
+  if (limpio.endsWith('@s.whatsapp.net')) return limpio
+  if (!limpio.includes('@')) return `${limpio}@s.whatsapp.net`
+
+  const digitos = digitosJid(limpio)
+
+  const pn = pnParaLid(digitos)
+  if (pn) return `${pn}@s.whatsapp.net`
+
+  const participantes = await participantesGrupo(sock, grupo)
+  const participante = participantes.find((p) => digitosJid(p.lid) === digitos)
+  if (participante) {
+    const telefono = participante.phoneNumber || participante.id
+    if (telefono && String(telefono).endsWith('@s.whatsapp.net')) return jidUsuario(telefono)
+  }
+
+  return limpio
+}
+
+/** Envía un texto por privado; si falla, avisa en el grupo sin filtrar nada */
+async function enviarPrivado({ sock, grupo, jugador, texto }) {
+  const destino = await jidPrivado(sock, grupo, jugador)
+  try {
+    await sock.sendMessage(destino, { text: texto })
+    return true
+  } catch (e) {
+    console.error('[uno] no se pudo enviar el privado:', e.message)
+    await sock.sendMessage(grupo, {
+      text: `⚠️ No pude escribirle por privado a @${digitosJid(jugador)}. Debe abrir el chat del bot para recibir su mano.`,
+      mentions: [jidUsuario(destino)],
+    })
+    return false
+  }
+}
+
+/**
+ * Copia del progreso de la mesa al privado de un jugador. Si el privado falla
+ * no se avisa en el grupo (la mano sí avisa: esa entrega es imprescindible).
+ */
+async function enviarProgresoPrivado({ sock, grupo, jugador, texto }) {
+  const destino = await jidPrivado(sock, grupo, jugador)
+  try {
+    await sock.sendMessage(destino, { text: texto })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Cambia los tokens de mención por el nombre visible: en privado no hay menciones */
+function textoParaDM(texto, menciones = []) {
+  let salida = String(texto || '')
+  for (const jid of menciones) {
+    const digitos = digitosJid(jid)
+    if (!digitos) continue
+    salida = salida.split(`@${digitos}`).join(nombreLegible(jid, obtenerUsuario))
+  }
+  return salida
+}
+
+/** Etiqueta con mención real para un jugador dentro del grupo */
+async function mencionJugador(sock, grupo, jugador) {  const participantes = await participantesGrupo(sock, grupo)
+  const mencion = mencionDeParticipantes(participantes, jugador)
+  return {
+    token: mencion?.token || `@${digitosJid(jugador)}`,
+    jid: mencion?.jid || jidUsuario(jugador),
+  }
+}
+
+/** Texto de la mano, una carta por linea y con las no jugables marcadas */
+function textoMano({ mano, ultima, color, turno, nota }) {
+  const partes = [`*Tu mano » ${mano.length} carta${mano.length === 1 ? '' : 's'}*`]
+
+  const lineas = mano.map((c) => {
+    const valida = esValida(c, ultima, color)
+    return `» ${codigoCarta(c)} ${etiquetaCarta(c)}${valida ? '' : ' _(no jugable)_'}`
+  })
+  partes.push(lineas.join('\n'))
+
+  if (nota) partes.push(nota)
+
+  const jugables = mano.filter((c) => esValida(c, ultima, color))
+  if (turno) {
+    partes.push(
+      jugables.length
+        ? `✎ *jugar* » \`/uno R7\` _(color + valor)_\n│ ⌛ Tienes *${textoTiempo()}* para jugar.`
+        : `✎ *robar* » Robar una carta con \`/uno draw\`.\n│ ⌛ Tienes *${textoTiempo()}* para jugar.`
+    )
+  } else {
+    partes.push('│ 🕒 Espera tu turno; te aviso por aquí cuando te toque.')
+  }
+
+  partes.push('ⓘ Sólo tú puedes ver este mensaje.')
+  return partes.join('\n\n')
+}
+
+/**
+ * Envía por privado la mano y la carta actual de un jugador.
+ * Solo ese jugador la ve. Devuelve true si se pudo entregar.
+ */
+async function enviarManoPrivada({ sock, grupo, jugador, turno = false, nota = '' }) {
+  const actual = partidaDeGrupo(grupo)
+  if (!actual || actual.estado !== 'jugando') return false
+
+  const fila = jugadoresUno(actual.id).find((j) => j.jid === jugador)
+  if (!fila) return false
+
+  const ultima = leerUltima(actual.ultima)
+  const texto = textoMano({ mano: leerMano(fila), ultima, color: actual.color, turno, nota })
+  return await enviarPrivado({ sock, grupo, jugador, texto })
+}
+
+/** Pie de los mensajes del grupo: carta superior, turno y tiempo */
+async function pieTurno({ sock, grupo, partida, turno }) {
+  const mencion = await mencionJugador(sock, grupo, turno)
+  const ultima = leerUltima(partida.ultima)
+  return {
+    texto:
+      `❀ *Carta superior* » ${etiquetaCarta(ultima)}\n` +
+      `✦ *Turno* » ${mencion.token}\n` +
+      `│ ⌛ Tiene *${textoTiempo()}* para jugar.`,
+    menciones: [mencion.jid],
+  }
+}
+
+/**
+ * Publica el turno en el grupo, envía la mano por privado y arranca el reloj.
+ * @param {object} opciones
+ * @param {string} opciones.encabezado linea principal (jugada, robo, salida...)
+ * @param {string} [opciones.detalle] linea extra (efecto de la carta)
+ * @param {string[]} [opciones.menciones] JIDs que aparecen en el encabezado
+ */
+async function anunciarTurno({ sock, grupo, turno, encabezado, detalle = '', menciones = [], nota = '' }) {
+  const partida = partidaDeGrupo(grupo)
+  if (!partida || partida.estado !== 'jugando') return
+
+  const pie = await pieTurno({ sock, grupo, partida, turno })
+  const publico = `${encabezado}${detalle ? `\n${detalle}` : ''}\n\n${pie.texto}`
+  await sock.sendMessage(grupo, {
+    text: publico,
+    mentions: [...menciones, ...pie.menciones],
+  })
+
+  // El mismo progreso de la mesa va al privado de cada jugador
+  const paraDM = textoParaDM(publico, [...menciones, ...pie.menciones])
+  for (const j of jugadoresUno(partida.id)) {
+    await enviarProgresoPrivado({
+      sock,
+      grupo,
+      jugador: j.jid,
+      texto: `🃏 *UNO — progreso de la mesa*\n\n${paraDM}`,
+    })
+  }
+
+  await enviarManoPrivada({ sock, grupo, jugador: turno, turno: true, nota })
+  programarTurno({ sock, grupo, jugador: turno })
+}
+
+/** Programa el cierre automatico del turno */
+function programarTurno({ sock, grupo, jugador }) {
+  cancelarTurno(grupo)
+  const temporizador = setTimeout(() => {
+    temporizadores.delete(grupo)
+    jugarPorTiempo({ sock, grupo, jugador }).catch((e) =>
+      console.error('[uno] error al pasar el turno por tiempo:', e.message)
+    )
+  }, SEGUNDOS_TURNO * 1000)
+
+  // No mantener vivo el proceso solo por este reloj
+  if (typeof temporizador.unref === 'function') temporizador.unref()
+  temporizadores.set(grupo, temporizador)
+}
+
+/**
+ * Se acabo el tiempo del jugador: roba una carta y pasa el turno.
+ * Tras varios turnos seguidos sin jugar, la partida se cancela.
+ */
+async function jugarPorTiempo({ sock, grupo, jugador }) {
+  const partida = partidaDeGrupo(grupo)
+  if (!partida || partida.estado !== 'jugando') return
+  if (partida.turno !== jugador) return
+
+  const fila = jugadoresUno(partida.id).find((j) => j.jid === jugador)
+  if (!fila) return
+
+  const mano = leerMano(fila)
+  const ultima = leerUltima(partida.ultima)
+  const mazo = leerMazo(partida.mazo)
+  const robada = mazo.pop()
+
+  let nota = ''
+  let puedeJugar = false
+  if (robada) {
+    mano.push(robada)
+    actualizarManoUno(partida.id, jugador, mano)
+    actualizarPartidaUno(partida.id, { mazo: JSON.stringify(mazo) })
+    puedeJugar = esValida(robada, ultima, partida.color)
+    nota = puedeJugar
+      ? `📥 Se acabó tu tiempo: robaste ${etiquetaCarta(robada)} y pasas el turno.`
+      : `📥 Se acabó tu tiempo: robaste ${etiquetaCarta(robada)}, no la puedes jugar y pasas el turno.`
+  } else {
+    nota = '📥 Se acabó tu tiempo y no quedan cartas: pasas el turno.'
+  }
+
+  const seguidos = (tiemposSeguidos.get(grupo) || 0) + 1
+  tiemposSeguidos.set(grupo, seguidos)
+
+  if (seguidos >= MAX_TIEMPOS_SEGUIDOS) {
+    cancelarTurno(grupo)
+    tiemposSeguidos.delete(grupo)
+    terminarPartidaUno(partida.id, 'cancelada')
+    const mencion = await mencionJugador(sock, grupo, jugador)
+    await sock.sendMessage(grupo, {
+      text:
+        `⌛ ${mencion.token} se quedó sin tiempo.\n\n` +
+        `🚫 *Partida de UNO cancelada* por inactividad (${MAX_TIEMPOS_SEGUIDOS} turnos seguidos sin jugar).`,
+      mentions: [mencion.jid],
+    })
+    return
+  }
+
+  const jugadores = cargarJugadores(partida.id)
+  const turno = siguienteTurno(jugadores, jugador, partida.direccion)
+  if (!turno) return
+
+  actualizarPartidaUno(partida.id, { turno })
+
+  const mencion = await mencionJugador(sock, grupo, jugador)
+  const encabezado = puedeJugar
+    ? `✿ ⌛ ${mencion.token} se quedó sin tiempo y robó una carta.`
+    : robada
+      ? `✿ ${mencion.token} ha robado una carta que no puede jugar y pasa su turno.`
+      : `✿ ${mencion.token} se quedó sin tiempo y pasa su turno.`
+
+  // Su mano actualizada (con la carta robada) también va por privado
+  await enviarManoPrivada({ sock, grupo, jugador, nota })
+
+  await anunciarTurno({
+    sock,
+    grupo,
+    turno,
+    encabezado,
+    menciones: [mencion.jid],
+  })
+}
+
+export default async ({ sock, jid, msg, args, sender, esGrupo: esG, jugadaSuelta = false }) => {
+  let sub = String(args[0] || 'help').toLowerCase()
+  let resto = args.slice(1)
   const quien = sender || jid
 
-  if (!esG) {
-    await sock.sendMessage(jid, { text: '⚠️ UNO solo funciona en grupos.', quoted: msg })
+  // Codigo corto suelto: `/uno R7` es lo mismo que `/uno play R7`
+  if (!COMANDOS_UNO.has(sub)) {
+    const suelta = leerJugada([sub, ...resto].join(''))
+    if (suelta && (suelta.valor || suelta.tipo === 'comodin' || suelta.tipo === '+4')) {
+      resto = [sub, ...resto]
+      sub = 'play'
+    }
+  }
+
+  // En el grupo la partida se busca por grupo; en privado, por jugador
+  let partida = null
+  let grupo = jid
+
+  if (esG) {
+    partida = partidaDeGrupo(jid)
+  } else {
+    const activas = partidasDelJugador(quien)
+    partida = activas.find((p) => p.estado === 'jugando') || activas[0] || null
+    if (partida) grupo = partida.grupo
+  }
+
+  // Crear, unirse y empezar solo tiene sentido en el grupo
+  const soloGrupo = ['create', 'crear', 'new', 'join', 'unirse', 'entrar', 'start', 'empezar', 'begin']
+  if (!esG && soloGrupo.includes(sub)) {
+    await sock.sendMessage(jid, {
+      text:
+        '⚠️ Crea, únete o empieza la partida desde el grupo donde se juega.\n' +
+        '_Después haz tus jugadas por aquí, en privado._',
+    })
+    return
+  }
+
+  // Las jugadas van por privado; en el grupo solo se anuncia el progreso
+  const soloPrivado = ['play', 'jugar', 'card', 'carta', 'draw', 'robar', 'pick']
+  if (esG && soloPrivado.includes(sub)) {
+    const ejemplo = ['draw', 'robar', 'pick'].includes(sub) ? '/uno draw' : '/uno R7'
+    await sock.sendMessage(jid, {
+      text:
+        '🔒 *Tus jugadas van por privado.*\n' +
+        `Escríbeme \`${ejemplo}\` en mi chat privado.\n` +
+        '_Tu mano nunca se publica en el grupo: aquí solo se anuncia la carta jugada._',
+      quoted: msg,
+    })
     return
   }
 
   // ───────────── Crear partida ─────────────
   if (sub === 'create' || sub === 'crear' || sub === 'new') {
-    const partida = partidaUnoActiva(jid)
     if (partida) {
       await sock.sendMessage(jid, { text: '⚠️ Ya hay una partida en este grupo.', quoted: msg })
       return
     }
 
     const apuesta = Math.max(0, Math.trunc(Number(resto[0]) || 0))
-    const eco = obtenerEconomia(quien)
-    if (apuesta > eco.monedas) {
-      await sock.sendMessage(jid, { text: `💸 No tienes oro suficientes para una apuesta de *${apuesta}*.`, quoted: msg })
+    const saldo = oroDisponible(quien)
+    if (apuesta > saldo.total) {
+      await sock.sendMessage(jid, {
+        text:
+          `💸 No tienes oro suficiente para una apuesta de *${apuesta}*.\n` +
+          `│ Cartera: *${saldo.enMano}* · Banco: *${saldo.enBanco}*`,
+        quoted: msg,
+      })
       return
     }
 
@@ -127,21 +730,42 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
     }
 
     const apuesta = partida.apuesta || 0
+    let delBanco = 0
     if (apuesta > 0) {
-      const eco = obtenerEconomia(quien)
-      if (eco.monedas < apuesta) {
-        await sock.sendMessage(jid, { text: `💸 Necesitas *${apuesta}* oro para entrar.`, quoted: msg })
+      const pago = pagarConBanco(quien, apuesta, 'casino', 'Apuesta UNO')
+      if (!pago.ok) {
+        const saldo = oroDisponible(quien)
+        await sock.sendMessage(jid, {
+          text:
+            `💸 Necesitas *${apuesta}* oro para entrar.\n` +
+            `│ Cartera: *${saldo.enMano}* · Banco: *${saldo.enBanco}*`,
+          quoted: msg,
+        })
         return
       }
-      restarMonedas(quien, apuesta, 'casino', 'Apuesta UNO')
+      delBanco = pago.delBanco
     }
 
     agregarJugadorUno(partida.id, quien, [])
 
-    await sock.sendMessage(jid, {
-      text: `🙋 *${nombreLegible(quien, obtenerUsuario)}* se unió a la partida.`,
-      quoted: msg,
-    })
+    const mencion = await mencionJugador(sock, grupo, quien)
+    const aviso =
+      `🙋 ${mencion.token} se unió a la partida.` +
+      (delBanco > 0 ? `\n🏦 Del banco: *${delBanco}* oro.` : '')
+
+    await sock.sendMessage(jid, { text: aviso, mentions: [mencion.jid], quoted: msg })
+
+    // El mismo progreso va al privado de cada jugador ya sentado
+    const avisoDM = textoParaDM(aviso, [mencion.jid])
+    for (const j of jugadoresUno(partida.id)) {
+      if (j.jid === quien) continue
+      await enviarProgresoPrivado({
+        sock,
+        grupo,
+        jugador: j.jid,
+        texto: `🃏 *UNO — progreso de la mesa*\n\n${avisoDM}`,
+      })
+    }
     return
   }
 
@@ -183,18 +807,32 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
       direccion: 1,
     })
 
-    const lista = jugadores
-      .map((j) => `• ${nombreLegible(j.jid, obtenerUsuario)} (${manos.get(j.jid).length} cartas)`)
-      .join('\n')
+    cancelarTurno(grupo)
+    reiniciarTiempos(grupo)
 
-    await sock.sendMessage(jid, {
-      text:
-        `🃏 *¡Empieza la partida!*\n\n` +
-        `${lista}\n\n` +
-        `Carta inicial: ${etiquetaCarta(inicial)}\n` +
-        `Turno de: *${nombreLegible(jugadores[0].jid, obtenerUsuario)}*`,
-      quoted: msg,
+    const menciones = []
+    const lista = []
+    for (const j of jugadores) {
+      const mencion = await mencionJugador(sock, jid, j.jid)
+      menciones.push(mencion.jid)
+      lista.push(`• ${mencion.token} — ${manos.get(j.jid).length} cartas`)
+    }
+
+    await anunciarTurno({
+      sock,
+      grupo: jid,
+      turno: jugadores[0].jid,
+      encabezado: `✿ *¡Empieza la partida de UNO!*\n\n${lista.join('\n')}`,
+      detalle:
+        '🔒 Tu mano llega por privado.\n' +
+        '│ Juega con `/uno R7` (color + valor) en mi chat privado.',
+      menciones,
     })
+
+    // El resto de jugadores recibe su mano inicial por privado
+    for (const j of jugadores.slice(1)) {
+      await enviarManoPrivada({ sock, grupo: jid, jugador: j.jid })
+    }
     return
   }
 
@@ -211,16 +849,19 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
       return
     }
 
-    const mano = leerMano(jugador)
-    const ultima = partida.ultima ? JSON.parse(partida.ultima) : null
-
-    await sock.sendMessage(jid, {
-      text:
-        `🃏 *Tu mano* (${mano.length} cartas)\n\n` +
-        `${mano.map(etiquetaCarta).join('  ')}\n\n` +
-        `Carta actual: ${etiquetaCarta(ultima)} (${COLORES[partida.color]?.nombre || '?'})`,
-      quoted: msg,
+    const enviado = await enviarManoPrivada({
+      sock,
+      grupo,
+      jugador: quien,
+      turno: partida.turno === quien,
     })
+
+    if (enviado) {
+      await sock.sendMessage(jid, {
+        text: `📩 *${nombreLegible(quien, obtenerUsuario)}*, te envié tu mano por privado.`,
+        quoted: msg,
+      })
+    }
     return
   }
 
@@ -228,6 +869,8 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
   // ───────────── Jugar carta ─────────────
   if (sub === 'play' || sub === 'jugar' || sub === 'card' || sub === 'carta') {
     if (!partida || partida.estado !== 'jugando') {
+      // Jugada suelta sin partida: no se responde nada
+      if (jugadaSuelta) return
       await sock.sendMessage(jid, { text: '❌ No hay ninguna partida en curso.', quoted: msg })
       return
     }
@@ -247,31 +890,35 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
     }
 
     const mano = leerMano(jugador)
-    const ultima = partida.ultima ? JSON.parse(partida.ultima) : null
+    const ultima = leerUltima(partida.ultima)
 
-    // /uno +4 verde  |  /uno rojo 5  |  /uno skip
-    const primero = String(resto[0] || '').toLowerCase()
+    // Codigo corto: R7 · AS · VR · Y+2 · CV · C+A
+    const jugada = leerJugada(resto.join(''))
     let carta = null
-    let colorElegido = null
+    let colorElegido = jugada?.colorElegido ?? null
 
-    if (primero === '+4' || primero === 'comodin' || primero === 'wild') {
-      const tipo = primero === '+4' ? '+4' : 'comodin'
-      carta = buscarCartaEnMano(mano, { tipo })
-      if (carta) colorElegido = normalizarColor(resto[1])
-    } else if (primero) {
-      const color = normalizarColor(primero)
-      const valor = resto[1]
-      if (color && valor) carta = buscarCartaEnMano(mano, { color, valor })
-      else if (!color && valor) carta = buscarCartaEnMano(mano, { valor })
+    if (jugada) {
+      if (jugada.tipo === 'comodin' || jugada.tipo === '+4') {
+        carta = buscarCartaEnMano(mano, { tipo: jugada.tipo })
+      } else if (jugada.valor) {
+        carta = buscarCartaEnMano(mano, { color: jugada.color, valor: jugada.valor })
+      }
     }
 
     if (!carta) {
       await sock.sendMessage(jid, {
         text:
-          '❓ *Uso:* `/uno play <color> <valor>`\n' +
-          '_Ejemplos:_ `/uno rojo 5` · `/uno azul skip` · `/uno +4 verde`\n\n' +
-          `Tu mano: ${mano.map(etiquetaCarta).join('  ')}`,
+          '❓ *Uso:* `/uno R7` _(color + valor)_\n' +
+          '_Ejemplos:_ `/uno R7` rojo 7 · `/uno AS` azul skip · `/uno VR` verde reverse · ' +
+          '`/uno Y+2` amarillo +2 · `/uno CV` comodín verde · `/uno C+A` comodín +4 azul',
         quoted: msg,
+      })
+      await enviarManoPrivada({
+        sock,
+        grupo,
+        jugador: quien,
+        turno: partida.turno === quien,
+        nota: '❓ No encontré esa carta en tu mano.',
       })
       return
     }
@@ -286,7 +933,10 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
 
     if ((carta.tipo === '+4' || carta.tipo === 'comodin') && !colorElegido) {
       await sock.sendMessage(jid, {
-        text: '🎨 Elige color: `/uno play ' + carta.tipo + ' rojo|azul|verde|amarillo`',
+        text:
+          carta.tipo === '+4'
+            ? '🎨 Elige color: `/uno C+R` rojo · `/uno C+A` azul · `/uno C+V` verde · `/uno C+M` amarillo'
+            : '🎨 Elige color: `/uno CR` rojo · `/uno CA` azul · `/uno CV` verde · `/uno CM` amarillo',
         quoted: msg,
       })
       return
@@ -298,7 +948,7 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
 
     let color = partida.color
     let direccion = partida.direccion
-    let mazo = JSON.parse(partida.mazo || '[]')
+    let mazo = leerMazo(partida.mazo)
     let saltar = false
     let robar = 0
 
@@ -308,24 +958,33 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
       color = carta.color
       if (carta.tipo === 'skip') saltar = true
       if (carta.tipo === 'reverse') direccion *= -1
-      if (carta.tipo === '+2') robar = 2
+      if (carta.tipo === '+2') {
+        robar = 2
+        saltar = true
+      }
     }
 
     const jugadores = cargarJugadores(partida.id).map((j) =>
       j.jid === quien ? { ...j, mano: nuevaMano } : j
     )
 
-    if (carta.tipo === '+4') {
+    // +2 y +4: el jugador siguiente roba y pierde el turno
+    let afectado = null
+    let robadas = 0
+    if (robar > 0 || carta.tipo === '+4') {
       const siguiente = siguienteTurno(jugadores, quien, direccion)
       const objetivo = jugadores.find((j) => j.jid === siguiente)
       if (objetivo) {
-        for (let i = 0; i < 4; i++) {
+        const cantidad = carta.tipo === '+4' ? 4 : robar
+        robadas = cantidad
+        for (let i = 0; i < cantidad; i++) {
           const nueva = mazo.pop()
           if (nueva) objetivo.mano.push(nueva)
         }
         actualizarManoUno(partida.id, siguiente, objetivo.mano)
-        marcarPasoUno(partida.id, siguiente, true)
+        afectado = siguiente
       }
+      if (carta.tipo === '+4') saltar = true
     }
 
     actualizarPartidaUno(partida.id, {
@@ -346,24 +1005,36 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
         sumarMonedas(j.jid, suma, 'casino', 'Puntos UNO')
       }
       sumarMonedas(quien, puntos, 'casino', 'Victoria UNO')
+      sumarPuntosUno(partida.id, quien, puntos)
 
       const apuesta = partida.apuesta || 0
       if (apuesta > 0) {
         for (const j of jugadores) {
           if (j.jid === quien) continue
-          restarMonedas(j.jid, apuesta, 'casino', 'Apuesta UNO')
+          pagarConBanco(j.jid, apuesta, 'casino', 'Apuesta UNO')
         }
         sumarMonedas(quien, apuesta * (jugadores.length - 1), 'casino', 'Premio UNO')
       }
 
       terminarPartidaUno(partida.id, 'terminada')
-      await sock.sendMessage(jid, {
-        text:
-          `🏆 *¡${nombreLegible(quien, obtenerUsuario)} gana la partida de UNO!*\n` +
-          `💰 Puntos: *${puntos}*` +
-          (apuesta ? `\n💵 Premio: *${formatearNumero(apuesta * (jugadores.length - 1))}* oro` : ''),
-        quoted: msg,
-      })
+      cancelarTurno(grupo)
+      reiniciarTiempos(grupo)
+      const resultado =
+        `🏆 *¡${nombreLegible(quien, obtenerUsuario)} gana la partida de UNO!*\n` +
+        `💰 Puntos: *${puntos}*` +
+        (apuesta ? `\n💵 Premio: *${formatearNumero(apuesta * (jugadores.length - 1))}* oro` : '')
+
+      await sock.sendMessage(grupo, { text: resultado })
+
+      // El resultado también llega al privado de cada jugador
+      for (const j of jugadores) {
+        await enviarProgresoPrivado({
+          sock,
+          grupo,
+          jugador: j.jid,
+          texto: `🃏 *UNO — resultado*\n\n${resultado}`,
+        })
+      }
       return
     }
 
@@ -376,30 +1047,50 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
       turno = siguienteTurno(jugadores, quien, direccion)
     }
 
-    if (robar > 0) {
-      const objetivo = jugadores.find((j) => j.jid === turno)
-      if (objetivo) {
-        for (let i = 0; i < robar; i++) {
-          const nueva = mazo.pop()
-          if (nueva) objetivo.mano.push(nueva)
-        }
-        actualizarManoUno(partida.id, turno, objetivo.mano)
-        actualizarPartidaUno(partida.id, { mazo: JSON.stringify(mazo) })
-      }
-    }
-
     actualizarPartidaUno(partida.id, { turno })
 
-    const partes = [`🃏 *${nombreLegible(quien, obtenerUsuario)}* juega ${etiquetaCarta(carta)}`]
-    if (carta.tipo === '+4' || carta.tipo === 'comodin') {
-      partes.push('🎨 Color: *' + COLORES[color].nombre + '*')
-    }
-    if (carta.tipo === 'reverse') partes.push('🔄 Se invierte el sentido')
-    if (saltar) partes.push('⛔ El siguiente pierde el turno')
-    if (robar) partes.push(`+2 roba ${robar} cartas`)
-    partes.push(`➡️ Turno de *${nombreLegible(turno, obtenerUsuario)}*`)
+    const mencion = await mencionJugador(sock, grupo, quien)
+    const encabezado = `✿ *¡${mencion.token} ha jugado ${etiquetaCarta(carta)}!*`
 
-    await sock.sendMessage(jid, { text: partes.join('\n'), quoted: msg })
+    const efectos = []
+    if (carta.tipo === '+4') efectos.push('│ +4 » El siguiente roba 4 cartas y pierde el turno.')
+    if (carta.tipo === '+2') efectos.push('│ +2 » El siguiente roba 2 cartas y pierde el turno.')
+    if (carta.tipo === 'skip') efectos.push('│ ⛔ El siguiente pierde el turno.')
+    if (carta.tipo === 'reverse') efectos.push('│ 🔄 Se invierte el sentido.')
+    if (carta.tipo === '+4' || carta.tipo === 'comodin') {
+      efectos.push(`│ 🎨 Color elegido » *${COLORES[color]?.nombre || color}*`)
+    }
+
+    reiniciarTiempos(grupo)
+
+    await anunciarTurno({
+      sock,
+      grupo,
+      turno,
+      encabezado,
+      detalle: efectos.join('\n'),
+      menciones: [mencion.jid],
+    })
+
+    // La mano solo se entrega por privado: al afectado (+2/+4) y al del turno
+    if (afectado && afectado !== turno) {
+      await enviarManoPrivada({
+        sock,
+        grupo,
+        jugador: afectado,
+        nota: `📥 Robaste *${robadas}* cartas por el \`${carta.tipo}\`. Pierdes el turno.`,
+      })
+    }
+
+    // Quien jugó también recibe su mano actualizada, sin turno
+    if (quien !== turno && quien !== afectado) {
+      await enviarManoPrivada({
+        sock,
+        grupo,
+        jugador: quien,
+        nota: `✅ Jugaste ${etiquetaCarta(carta)}.`,
+      })
+    }
     return
   }
 
@@ -421,7 +1112,7 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
       return
     }
 
-    const mazo = JSON.parse(partida.mazo || '[]')
+    const mazo = leerMazo(partida.mazo)
     const carta = mazo.pop()
     if (!carta) {
       await sock.sendMessage(jid, { text: '❌ No quedan cartas en el mazo.', quoted: msg })
@@ -437,13 +1128,33 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
     const turno = siguienteTurno(jugadores, quien, partida.direccion)
     actualizarPartidaUno(partida.id, { turno })
 
-    await sock.sendMessage(jid, {
-      text:
-        `🃏 Robaste ${etiquetaCarta(carta)}\n` +
-        `Tu mano: ${mano.map(etiquetaCarta).join('  ')}\n` +
-        `➡️ Turno de *${nombreLegible(turno, obtenerUsuario)}*`,
-      quoted: msg,
+    const ultima = leerUltima(partida.ultima)
+    const puedeJugar = esValida(carta, ultima, partida.color)
+    const mencion = await mencionJugador(sock, grupo, quien)
+    const encabezado = puedeJugar
+      ? `✿ ${mencion.token} ha robado una carta y pasa su turno.`
+      : `✿ ${mencion.token} ha robado una carta que no puede jugar y pasa su turno.`
+
+    reiniciarTiempos(grupo)
+
+    await anunciarTurno({
+      sock,
+      grupo,
+      turno,
+      encabezado,
+      menciones: [mencion.jid],
+      nota: turno === quien ? `📥 Robaste ${etiquetaCarta(carta)}.` : '',
     })
+
+    // La carta robada y la mano van solo al jugador
+    if (turno !== quien) {
+      await enviarManoPrivada({
+        sock,
+        grupo,
+        jugador: quien,
+        nota: `📥 Robaste ${etiquetaCarta(carta)}.`,
+      })
+    }
     return
   }
 
@@ -462,29 +1173,58 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
 
     quitarJugadorUno(partida.id, quien)
 
+    const restantes = jugadoresUno(partida.id)
+    const mencion = await mencionJugador(sock, grupo, quien)
+    const encabezado = `👋 ${mencion.token} salió de la partida de UNO.`
+
     // Si ya no queda nadie, la partida se cancela
-    if (!jugadoresUno(partida.id).length) {
+    if (!restantes.length) {
+      cancelarTurno(grupo)
+      reiniciarTiempos(grupo)
       terminarPartidaUno(partida.id, 'cancelada')
+      await sock.sendMessage(grupo, { text: encabezado, mentions: [mencion.jid] })
+      return
     }
 
-    await sock.sendMessage(jid, {
-      text: '👋 *' + nombreLegible(quien, obtenerUsuario) + '* salió de la partida de UNO.',
-      quoted: msg,
-    })
+    if (partida.estado === 'jugando') {
+      // Con un solo jugador ya no se puede continuar
+      if (restantes.length < 2) {
+        cancelarTurno(grupo)
+        reiniciarTiempos(grupo)
+        terminarPartidaUno(partida.id, 'cancelada')
+        await sock.sendMessage(grupo, {
+          text: `${encabezado}\n\n🚫 *Partida cancelada:* hacen falta al menos 2 jugadores.`,
+          mentions: [mencion.jid],
+        })
+        return
+      }
+
+      // Si se va el jugador del turno, pasa al siguiente
+      if (partida.turno === quien) {
+        const jugadores = cargarJugadores(partida.id)
+        const turno = siguienteTurno(jugadores, quien, partida.direccion)
+        actualizarPartidaUno(partida.id, { turno })
+        reiniciarTiempos(grupo)
+        await anunciarTurno({ sock, grupo, turno, encabezado, menciones: [mencion.jid] })
+        return
+      }
+    }
+
+    await sock.sendMessage(grupo, { text: encabezado, mentions: [mencion.jid] })
     return
   }
 
   // ───────────── Estadisticas ─────────────
   if (sub === 'stats' || sub === 'estadisticas' || sub === 'stat') {
     const puntos = puntosUno(quien)
-    constECO = obtenerEconomia(quien)
+    const eco = obtenerEconomia(quien)
 
     await sock.sendMessage(jid, {
       text:
         `🃏 *Estadísticas de UNO*` +
         `\n👤 ${nombreLegible(quien, obtenerUsuario)}` +
         `\n🏅 Puntos acumulados: *${formatearNumero(puntos)}*` +
-        `\n💰 Oro: *${formatearNumero(ECO.monedas)}*` +
+        `\n💰 Oro: *${formatearNumero(eco.monedas)}*` +
         `\n🪙 Apuesta actual: *${formatearNumero(partida?.apuesta || 0)}*`,
       quoted: msg,
     })
