@@ -1,6 +1,6 @@
 {
   "name": "beerus-bot-md",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "Beerus Bot MD - Bot de WhatsApp multi-dispositivo con Baileys",
   "type": "module",
   "main": "index.js",
@@ -12,7 +12,8 @@
     "test": "node verify.mjs",
     "cartas": "node scripts/refrescar-cartas.mjs",
     "banners": "node scripts/renovar-banners.mjs",
-    "rarezas": "node scripts/sincronizar-rarezas.mjs"
+    "rarezas": "node scripts/sincronizar-rarezas.mjs",
+    "graphify": "node scripts/graphify.mjs"
   },
   "keywords": [
     "whatsapp",
