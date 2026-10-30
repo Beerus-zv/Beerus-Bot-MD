@@ -9,6 +9,7 @@
  *   economia  apagado: /economy, /casino y compania no responden
  *   gacha     apagado: /gacha, /waifu y compania no responden
  *   onlyadmin activo: los comandos responden solo a los admins
+ *   autoread  activo: el bot marca como leído cada mensaje que llega
  */
 import { esGrupo, obtenerMetadata, esAdmin } from '../lib/grupo.js'
 import { modoChat, configurarModo } from '../database/db.js'
@@ -19,6 +20,7 @@ const LEYENDAS = {
   gacha: 'los comandos de gacha',
   onlyadmin: 'el modo solo administradores',
   autoreact: 'las reacciones aleatorias a los mensajes',
+  autoread: 'la lectura automática de los mensajes',
 }
 
 const FRASE_OFF = {
@@ -27,6 +29,7 @@ const FRASE_OFF = {
   gacha: 'El sorteo queda en pausa.',
   onlyadmin: 'Solo los admins podrán usar comandos.',
   autoreact: 'Las reacciones aleatorias se pausan.',
+  autoread: 'Los mensajes quedarán sin leer (con su contador).',
 }
 
 /**
