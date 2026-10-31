@@ -97,7 +97,7 @@ const archivosComando = fs
   .readdirSync(path.join(RAIZ, 'commands'))
   .filter((f) => f.endsWith('.js'))
 
-const comandos = await cargarComandos()
+const comandos = await cargarComandos({ eager: true })
 const cargados = Object.keys(comandos)
 
 if (cargados.length === archivosComando.length) ok(`${cargados.length} comandos cargados`)

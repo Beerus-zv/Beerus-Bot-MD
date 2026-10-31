@@ -65,8 +65,11 @@ descargas y una IA con la personalidad de Beerus que funciona **sin clave de API
 - **Sesión en SQLite** (`lib/auth-state.js`): escrituras atómicas. Si el proceso muere a
   mitad de un lote, la llave entra entera o no entra — el esquema de 1400 archivos no
   garantiza eso.
-- **Carga paralela de comandos** (`lib/loader.js`): 12 importaciones a la vez. Un archivo
-  roto avisa por consola y el bot sigue arrancando.
+- **Carga perezosa de comandos** (`lib/loader.js`): al arrancar solo se leen los
+  nombres de archivo; cada comando se compila la primera vez que alguien lo usa. El
+  arranque no toca 210 archivos, y `npm test` sí los carga todos para validarlos.
+- **Arranque con caché de bytecode** (`lib/arranque.js`): V8 guarda el módulo compilado
+  en `data/v8-cache/`, así el segundo arranque no vuelve a compilar lo mismo.
 - **IA sin clave de API**: tres proveedores gratuitos en cascada y un proveedor que falla
   se aparta un rato para no hacer esperar a nadie. Con clave de Gemini mejora, pero no es
   obligatoria.
@@ -658,7 +661,8 @@ pm2 save
 Beerus-Bot-MD/
 ├── 📁 commands/           155 comandos, un archivo por comando
 ├── 📁 lib/                lógica compartida
-│   ├── loader.js              carga paralela de comandos
+│   ├── loader.js              carga perezosa de comandos
+│   ├── arranque.js            caché de bytecode de V8
 │   ├── auth-state.js          sesión de WhatsApp en SQLite
 │   ├── grupo.js               metadata, admins, JIDs y LID
 │   ├── economia.js            monedas, XP y niveles
@@ -691,7 +695,8 @@ export default async ({ sock, jid, msg, args }) => {
 ```
 
 El nombre del archivo es el nombre del comando. Los alias cortos viven en `lib/alias.js`,
-el registro en `index.js` y `lib/loader.js` solo carga y valida.
+el registro en `index.js` y `lib/loader.js` solo resuelve la ruta y compila el archivo la
+primera vez que se invoca.
 
 ---
 

@@ -1,3 +1,8 @@
+/**
+ * Arranque rapido: cache de bytecode de V8.
+ * Va primero: la cache solo cubre los modulos que se compilan despues.
+ */
+import './lib/arranque.js'
 import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
@@ -6,7 +11,6 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys'
 import fs from 'node:fs'
 import path from 'node:path'
-import pino from 'pino'
 import qrcode from 'qrcode-terminal'
 
 // ───────────── Base de datos ─────────────
@@ -19,8 +23,6 @@ import { categoriaDe } from './lib/categorias.js'
 import { revisarAntilink } from './lib/antilink.js'
 import { procesarCambioParticipantes } from './lib/bienvenida.js'
 import { alertaAdmin } from './lib/alertas.js'
-import { obtenerAvatarBeerus } from './lib/avatar.js'
-import { sincronizarBanners } from './lib/banners-menu.js'
 import { sincronizarRarezas } from './lib/gacha-internet.js'
 import { adquirirBloqueo, liberarBloqueo } from './lib/instancia.js'
 import { cargarComandos } from './lib/loader.js'
@@ -35,9 +37,12 @@ const CATEGORIAS_COSTO_ORO = new Set(['gacha', 'descargas', 'entretenimiento', '
 // ───────────── Configuración ─────────────
 import { BOT_NAME, PREFIX, AUTH_DIR, MENCIONES_BOT, LOG_LEVEL, METODO_VINCULACION, NUMERO_VINCULACION, NAVEGADOR_WA } from './config.js'
 import { elegirVinculacion, formatearCodigo } from './lib/vinculacion.js'
+import { crearLogger } from './lib/logger-baileys.js'
 
 
-const logger = pino({ level: LOG_LEVEL }) // cambia a 'info' o 'debug' para depurar
+// Logger de Baileys. Con LOG_LEVEL = 'silent' no se importa pino: el logger
+// vacio pesa nada y en un arranque en frio ahorra ~350 ms.
+const logger = await crearLogger(LOG_LEVEL)
 
 // Cache para almacenar mensajes recientes (para anti-delete)
 const mensajeCache = new Map()
@@ -98,15 +103,33 @@ import { fabricarModo } from './commands/modos.js'
 // ───────────── ComandosTomados de MEGA-MD ─────────────
 import { charlarConBeerus } from './commands/ia.js'
 import { esJugadaUno } from './commands/uno.js'
-import { fabricarInteraccion } from './commands/interaccion.js'
 // ── Lote Neko: banco, sociales y utilidades ──
 
 // Lote Perfiles (Neko): ficha, nivel y favoritos
-import { fabricarBusquedaNSFW } from './commands/rule34.js'
 import {
   fabricarAccionNSFW,
   fabricarImagenNSFW,
 } from './commands/nsfw-interaccion.js'
+
+/**
+ * Envoltorio perezoso para comandos que salen de una fabrica.
+ *
+ * rule34.js e interaccion.js arrastran sharp (y rule34 tambien yt-dlp), y solo
+ * se usan cuando alguien invoca esos comandos. Cargarlos al arrancar sumaba
+ * decenas de modulos a un camino critico que no los necesita: la fabrica se
+ * ejecuta en el primer uso y el resultado queda cacheado.
+ */
+const perezoso = (fabricar) => {
+  let comando = null
+  return async (ctx) => {
+    if (!comando) comando = await fabricar()
+    return comando(ctx)
+  }
+}
+
+/** Fabrica perezosa de interacciones (kiss, slap, hug y compania) */
+const fabricarInteraccion = (nombre, alias) =>
+  perezoso(async () => (await import('./commands/interaccion.js')).fabricarInteraccion(nombre, alias))
 
 // Handlers de interacciones (kiss, slap, hug y compania)
 const kiss = fabricarInteraccion('kiss')
@@ -178,9 +201,13 @@ const economiaModo = fabricarModo('economia')
 const onlyadmin = fabricarModo('onlyadmin')
 const autoreadModo = fabricarModo('autoread')
 
-// Busquedas por fuente preferida
-const danbooru = fabricarBusquedaNSFW('danbooru.donmai.us')
-const e621 = fabricarBusquedaNSFW('e621.net')
+// Busquedas por fuente preferida (rule34.js se carga en el primer uso)
+const danbooru = perezoso(
+  async () => (await import('./commands/rule34.js')).fabricarBusquedaNSFW('danbooru.donmai.us')
+)
+const e621 = perezoso(
+  async () => (await import('./commands/rule34.js')).fabricarBusquedaNSFW('e621.net')
+)
 
 /** Crea un alias que ejecuta un subcomando de economy */
 const conSub = (fn, sub) => (ctx) => fn({ ...ctx, args: [sub, ...(ctx.args || [])] })
@@ -873,11 +900,16 @@ function apagar(mensaje) {
 const VERSION_WA_ARCHIVO = path.resolve('data', 'wa-version.json')
 const ESPERA_VERSION_WA_SIN_CACHE = 4000
 const ESPERA_VERSION_WA_CON_CACHE = 1200
+// Una version guardada con menos de este tiempo se usa sin esperar al servidor:
+// el arranque no se frena y la consulta se hace igual, en segundo plano.
+const VIGENCIA_VERSION_WA_MS = 24 * 60 * 60 * 1000
 
 function leerVersionGuardada() {
   try {
     const datos = JSON.parse(fs.readFileSync(VERSION_WA_ARCHIVO, 'utf8'))
-    if (Array.isArray(datos?.version) && datos.version.length === 3) return datos.version
+    if (Array.isArray(datos?.version) && datos.version.length === 3) {
+      return { version: datos.version, guardado: Date.parse(datos.guardado) || 0 }
+    }
   } catch {
     // sin cache: se consulta y se guarda
   }
@@ -896,7 +928,14 @@ function guardarVersionWa(version) {
   }
 }
 
-/** Version de WhatsApp con espera acotada. undefined = la que trae Baileys. */
+/**
+ * Version de WhatsApp con espera acotada. undefined = la que trae Baileys.
+ *
+ * La consulta a raw.githubusercontent.com esta en el camino critico del
+ * arranque: si la red va lenta, el socket no se crea y el bot parece colgado.
+ * Con una version guardada reciente se usa esa de inmediato y la consulta se
+ * sigue en segundo plano, asi el arranque no espera a la red.
+ */
 async function versionDeWhatsApp() {
   const guardada = leerVersionGuardada()
 
@@ -906,6 +945,10 @@ async function versionDeWhatsApp() {
       return version || null
     })
     .catch(() => null)
+
+  const vigente =
+    guardada && Date.now() - guardada.guardado < VIGENCIA_VERSION_WA_MS
+  if (vigente) return guardada.version
 
   let temporizador
   const limite = new Promise((resolve) => {
@@ -917,8 +960,8 @@ async function versionDeWhatsApp() {
 
   if (version) return version
   if (guardada) {
-    log.aviso(`Version de WhatsApp: sin respuesta del servidor, uso la guardada (${guardada.join('.')}).`)
-    return guardada
+    log.aviso(`Version de WhatsApp: sin respuesta del servidor, uso la guardada (${guardada.version.join('.')}).`)
+    return guardada.version
   }
   log.aviso('Version de WhatsApp: sin respuesta del servidor, uso la que trae Baileys.')
   return undefined
@@ -1554,17 +1597,21 @@ const userSpamData = {}
     }
   })
 
-  // Precarga el banner de Beerus para que el menu no espere
-  try {
-    obtenerAvatarBeerus()
-  } catch (err) {
-    log.error('Error precargando avatar de Beerus', err)
-  }
+  // El arte del menu y los banners de internet se preparan despues de que la
+  // conexion este lista: al arrancar competirian por disco y red con Baileys,
+  // y en un arranque en frio eso es justo lo que se nota.
+  const PAUSA_PRECARGA_MS = 8000
+  setTimeout(() => {
+    // avatar.js y banners-menu.js arrastran sharp: se cargan aca y no al
+    // arrancar, para que el socket tenga el disco y la CPU para el solo.
+    import('./lib/avatar.js')
+      .then(({ obtenerAvatarBeerus }) => obtenerAvatarBeerus())
+      .catch((err) => log.error('Error precargando avatar de Beerus', err))
 
-  // Baja banners de internet en segundo plano: el menu tendra variedad
-  sincronizarBanners({ nuevo: 4 }).catch((err) =>
-    log.aviso(`No se pudieron precargar los banners del menu: ${err.message}`)
-  )
+    import('./lib/banners-menu.js')
+      .then(({ sincronizarBanners }) => sincronizarBanners({ nuevo: 4 }))
+      .catch((err) => log.aviso(`No se pudieron precargar los banners del menu: ${err.message}`))
+  }, PAUSA_PRECARGA_MS).unref()
 }
 
 // ───────────── Arranque ─────────────

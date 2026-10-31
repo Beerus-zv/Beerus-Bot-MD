@@ -9,6 +9,12 @@
  * Iniciar sin actualizador (desarrollo):
  *   npm run dev   /   node index.js
  */
+/**
+ * Arranque rapido: cache de bytecode de V8.
+ * Tiene que ir primero: la cache solo cubre los modulos que se compilan despues.
+ */
+import './lib/arranque.js'
+
 import { AUTO_ACTUALIZAR, RAMA_ACTUALIZACION } from './config.js'
 import { actualizarBot } from './lib/actualizador.js'
 
