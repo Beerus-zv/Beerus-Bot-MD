@@ -8,7 +8,7 @@
  * El post se envia como imagen (o video si es GIF/MP4) con sus tags y score.
  */
 import { nsfwActivo, ultimoUso, marcarUso } from '../database/db.js'
-import { buscarNSFW, postRecibibles, descargarPost, TAGS_AZAR } from '../lib/nsfw.js'
+import { buscarNSFW, postRecibibles, descargarPost, TAGS_AZAR, sinRepetir, marcarVisto } from '../lib/nsfw.js'
 import { mimeDe } from '../lib/descargas.js'
 import { recargaActiva } from '../lib/economia.js'
 import sharp from 'sharp'
@@ -71,8 +71,13 @@ export async function ejecutarBusqueda({ sock, jid, msg, args, sender }, { azar 
     }
 
     // Hasta 3 posts al azar: si la descarga de uno falla (peso/rotura),
-    // se prueba con otro
-    const lista = postRecibibles(resultado.posts, { permitirVideo: true })
+    // se prueba con otro. Se descartan los que ya se mandaron en este chat
+    // con esta misma busqueda, asi dos `/r34 burnice` no repiten imagen.
+    const claveVistos = `${jid}|${consulta.toLowerCase() || 'azar'}`
+    const lista = sinRepetir(
+      claveVistos,
+      postRecibibles(resultado.posts, { permitirVideo: true }),
+    )
 
     let post = null
     let buffer = null
@@ -125,6 +130,10 @@ export async function ejecutarBusqueda({ sock, jid, msg, args, sender }, { azar 
         quoted: msg,
       })
     }
+
+    // Anota el post como enviado en este chat: la proxima busqueda igual
+    // lo descarta y manda otra imagen
+    marcarVisto(claveVistos, post.id)
 
     // La recarga se gasta solo si la entrega salio completa
     marcarUso(quien, CLAVE_RECARGA)
