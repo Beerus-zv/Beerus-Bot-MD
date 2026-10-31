@@ -56,7 +56,7 @@ import {
 import { datosRareza, formatearFicha, estadoVisible, RAREZAS, elegirRareza, probabilidades, PITY_DURO, PITY_SUAVE, PITY_MEDIO_DURO } from '../lib/gacha.js'
 import { enviarCartaPersonaje } from '../lib/imagenes.js'
 import { nombreLegible, recargaActiva } from '../lib/economia.js'
-import { PERSONAJES_POR_SERIE, SERIES_POR_PAGINA } from '../lib/anilist.js'
+import { BANDAS_RAREZA, PERSONAJES_POR_SERIE, SERIES_POR_PAGINA } from '../lib/anilist.js'
 import { buscarOImportar, completarPersonajesSeries, personajesDeSerieInternet, listarSeriesInternet, sincronizarRarezas, tirarDeInternet } from '../lib/gacha-internet.js'
 import { asegurarOwnerVip, esOwnerMsg } from '../lib/owner.js'
 
@@ -96,6 +96,23 @@ function tablaProbabilidades() {
     })
     .reverse()
     .join('\n')
+}
+
+/**
+ * Linea de bandas de rareza para la ayuda.
+ * Se arma con BANDAS_RAREZA, la misma tabla que decide la rareza real, para
+ * que la ayuda no pueda quedarse con cortes viejos.
+ */
+function tablaBandas() {
+  // es-ES no agrupa numeros de 4 cifras por defecto, y "7500" al lado de
+  // "30.000" se lee mal: useGrouping siempre deja la tabla pareja.
+  const miles = (n) => Number(n).toLocaleString('es-ES', { useGrouping: 'always' })
+  const cortes = BANDAS_RAREZA.map((b) => {
+    const r = datosRareza(b.rareza)
+    return `${r.emoji} ${r.etiqueta} ≥${miles(b.favoritos)}`
+  })
+  const comun = datosRareza('comun')
+  return [...cortes, `${comun.emoji} ${comun.etiqueta} <${miles(BANDAS_RAREZA.at(-1).favoritos)}`].join(' · ')
 }
 
 const AYUDA = `💞 *Gacha anime*
@@ -139,7 +156,7 @@ ${tablaProbabilidades()}
 • Progreso en \`.gacha stats\`. Con rareza forzada no se mueve ninguna.
 
 *Rarezas (banda de favoritos en AniList):*
-• Mítico ≥15.000 · Legendario ≥8.000 · Épico ≥2.500 · Raro ≥750 · Común <750
+${tablaBandas()}
 
 *Mantenimiento (owner):*
 • \`.gacha sync\` - Recalcular las rarezas del catálogo desde AniList

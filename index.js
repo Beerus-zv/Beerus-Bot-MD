@@ -23,7 +23,7 @@ import { categoriaDe } from './lib/categorias.js'
 import { revisarAntilink } from './lib/antilink.js'
 import { procesarCambioParticipantes } from './lib/bienvenida.js'
 import { alertaAdmin } from './lib/alertas.js'
-import { sincronizarRarezas } from './lib/gacha-internet.js'
+import { realinearRarezasLocales, sincronizarRarezas } from './lib/gacha-internet.js'
 import { adquirirBloqueo, liberarBloqueo } from './lib/instancia.js'
 import { cargarComandos } from './lib/loader.js'
 import { useSqliteAuthState } from './lib/auth-state.js'
@@ -1086,8 +1086,16 @@ async function startBot() {
         })
         .catch(() => {})
 
-      // Rarezas del gacha: una pasada al dia en segundo plano para que
-      // .gachaboard y .gacha collection no muestren las viejas
+      // Rarezas del gacha: la banda de favoritos se aplica primero en local
+      // (instantaneo, con los favoritos ya guardados) y despues la pasada
+      // diaria a AniList, en segundo plano, para traer datos que falten.
+      try {
+        const local = realinearRarezasLocales()
+        if (local.actualizados) {
+          log.sistema(`🎴 Rarezas del gacha: ${local.actualizados} realineadas de ${local.revisados}`)
+        }
+      } catch {}
+
       sincronizarRarezas()
         .then((r) => {
           if (r && !r.omitido) {

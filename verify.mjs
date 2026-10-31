@@ -634,15 +634,15 @@ seccion('Series en internet')
 
   const bandas = [
     [0, 'comun'],
-    [749, 'comun'],
-    [750, 'raro'],
-    [2499, 'raro'],
-    [2500, 'epico'],
-    [7999, 'epico'],
-    [8000, 'legendario'],
-    [14999, 'legendario'],
-    [15000, 'mitico'],
-    [38845, 'mitico'],
+    [7499, 'comun'],
+    [7500, 'raro'],
+    [12499, 'raro'],
+    [12500, 'epico'],
+    [19999, 'epico'],
+    [20000, 'legendario'],
+    [29999, 'legendario'],
+    [30000, 'mitico'],
+    [39324, 'mitico'],
   ]
   const malas = bandas.filter(([fav, esperada]) => anilist.rarezaDeFavoritos(fav) !== esperada)
   if (!malas.length) {
@@ -885,20 +885,39 @@ seccion('Rarezas del gacha')
   }
 
   const fronteras = [
-    [749, 'comun'],
-    [750, 'raro'],
-    [2499, 'raro'],
-    [2500, 'epico'],
-    [7999, 'epico'],
-    [8000, 'legendario'],
-    [14999, 'legendario'],
-    [15000, 'mitico'],
+    [7499, 'comun'],
+    [7500, 'raro'],
+    [12499, 'raro'],
+    [12500, 'epico'],
+    [19999, 'epico'],
+    [20000, 'legendario'],
+    [29999, 'legendario'],
+    [30000, 'mitico'],
   ]
   const cruzan = fronteras.filter(([f, r]) => anilist.rarezaDeFavoritos(f) !== r)
   if (!cruzan.length) {
     ok('los bordes de rareza de la tirada coinciden con los de las listas')
   } else {
     mal('bordes de rareza distintos a las listas', cruzan.map(([f]) => `${f}->${anilist.rarezaDeFavoritos(f)}`).join(', '))
+  }
+
+  // Bug que llego a produccion: filaSimilar usaba `distancia` sin importarla,
+  // asi que cualquier tirada de un personaje que no estuviera ya en el
+  // catalogo moria con ReferenceError. Un import que falta no es error de
+  // sintaxis, asi que hay que revisarlo a mano.
+  const sinComentarios = fuente
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/^\s*\/\/.*$/gm, ' ')
+  const bloqueImport = fuente.slice(0, fuente.indexOf("} from './anilist.js'"))
+  const sinImportar = Object.keys(anilist).filter((nombre) => {
+    const seUsa = new RegExp(`\\b${nombre}\\s*\\(`).test(sinComentarios)
+    const estaImportado = new RegExp(`\\b${nombre}\\b`).test(bloqueImport)
+    return seUsa && !estaImportado
+  })
+  if (!sinImportar.length) {
+    ok('gacha-internet importa todo lo que usa de anilist.js')
+  } else {
+    mal('gacha-internet usa funciones de anilist.js sin importarlas', sinImportar.join(', '))
   }
 
   const tiradaFuente = fuente.slice(fuente.indexOf('export async function tirarDeInternet'))
@@ -966,7 +985,7 @@ seccion('Rarezas del gacha')
     levi.cambia === true &&
     luffy?.cambia === false &&
     luffy?.favoritos === 36000 &&
-    sakura?.rareza === 'raro' &&
+    sakura?.rareza === 'comun' &&
     sakura.cambia === true &&
     !plan.some((p) => p.id === 4)
   ) {
