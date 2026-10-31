@@ -634,14 +634,14 @@ seccion('Series en internet')
 
   const bandas = [
     [0, 'comun'],
-    [799, 'comun'],
-    [800, 'raro'],
-    [3599, 'raro'],
-    [3600, 'epico'],
-    [14999, 'epico'],
-    [15000, 'legendario'],
-    [24999, 'legendario'],
-    [25000, 'mitico'],
+    [721, 'comun'],
+    [722, 'raro'],
+    [2506, 'raro'],
+    [2507, 'epico'],
+    [6993, 'epico'],
+    [6994, 'legendario'],
+    [15145, 'legendario'],
+    [15146, 'mitico'],
     [39324, 'mitico'],
   ]
   const malas = bandas.filter(([fav, esperada]) => anilist.rarezaDeFavoritos(fav) !== esperada)
@@ -885,14 +885,14 @@ seccion('Rarezas del gacha')
   }
 
   const fronteras = [
-    [799, 'comun'],
-    [800, 'raro'],
-    [3599, 'raro'],
-    [3600, 'epico'],
-    [14999, 'epico'],
-    [15000, 'legendario'],
-    [24999, 'legendario'],
-    [25000, 'mitico'],
+    [721, 'comun'],
+    [722, 'raro'],
+    [2506, 'raro'],
+    [2507, 'epico'],
+    [6993, 'epico'],
+    [6994, 'legendario'],
+    [15145, 'legendario'],
+    [15146, 'mitico'],
   ]
   const cruzan = fronteras.filter(([f, r]) => anilist.rarezaDeFavoritos(f) !== r)
   if (!cruzan.length) {
