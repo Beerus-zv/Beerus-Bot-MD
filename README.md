@@ -567,6 +567,8 @@ Todo vive en `config.js`, sin tocar el resto del código.
 | `CONTACTO` | — | Instagram y PayPal para `.dona` y `.info` |
 | `IMAGEN_MENU_INTERNET` | `true` | Banners del menú desde internet |
 | `BANNER_LOCAL` | `'assets/beerus-banner.png'` | Respaldo sin red y avatar |
+| `GELBOORU_API_KEY` | — | Credencial del DAPI de Gelbooru |
+| `GELBOORU_USER_ID` | — | `user_id` que acompaña a la key |
 
 **Banderas de arranque:**
 
@@ -582,6 +584,8 @@ node iniciar.js --no-update # arrancar sin actualizador
 | Variable | Efecto |
 |:---|:---|
 | `BEERUS_NO_UPDATE=1` | Igual que `--no-update` |
+| `GELBOORU_API_KEY` | Sobrescribe la key de Gelbooru de `config.js` |
+| `GELBOORU_USER_ID` | Sobrescribe el `user_id` de Gelbooru |
 
 **Modos por chat** (`/modos` muestra el estado de todos):
 

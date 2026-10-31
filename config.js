@@ -101,3 +101,18 @@ export const IMAGEN_MENU_INTERNET = true
  */
 export const BANNER_LOCAL = 'assets/beerus-banner.png'
 
+/**
+ * ── API de Gelbooru ──
+ * Gelbooru exige credenciales desde 2025: sin ellas el DAPI responde 401.
+ * Con la key y el user_id la fuente vuelve a funcionar y aporta un catalogo
+ * mucho mas amplio que yande.re o konachan.
+ *
+ * Se pueden sobrescribir por entorno (GELBOORU_API_KEY / GELBOORU_USER_ID)
+ * para no dejar la clave en el repositorio.
+ */
+export const GELBOORU_API_KEY =
+  process.env.GELBOORU_API_KEY ||
+  'f61e8c8ba1b97e61a9f1c722e704109b69e0798bcb6696ec897bdfa6ac4810a91353d2fcfb538bd12b4aef09dd6859428696cce1a8b8a2593790ba64cdc17f2e'
+
+export const GELBOORU_USER_ID = process.env.GELBOORU_USER_ID || '2084405'
+
