@@ -191,9 +191,11 @@ const BeerusBot = {
   legendario o mítico garantizado en la 90 sin ninguno (con subida gradual desde la 60).
   Los dos contadores se ven en `.gacha stats`.
 - **Rarezas por favoritos reales**: la banda sale de los favoritos de AniList
-  (mítico ≥30.000 · legendario ≥20.000 · épico ≥12.500 · raro ≥7.500), calibrada
-  contra el catálogo para que quede en pirámide — 49 % común, 25 % raro, 17 % épico,
-  7 % legendario, 2,6 % mítico — en vez del embudo anterior donde el 75 % era mítico.
+  (mítico ≥25.000 · legendario ≥15.000 · épico ≥3.600 · raro ≥800), calibrada
+  contra el **top real de AniList** (100 páginas, 4.850 personajes, de 229 a
+  39.321 favoritos) para que el pool quede en la misma pirámide que el sorteo:
+  **62 % común · 28 % raro · 8 % épico · 0,9 % legendario · 0,2 % mítico**
+  (11 míticos en todo AniList), con un desvío de 1,7 puntos contra los pesos.
   La popularidad de la serie solo desempata dentro de la banda, nunca sube de tier.
 - **Colección y harem** por usuario, con tabla de valor y favoritos.
 - **Mercado**: vender, intercambiar, regalar y reclamar cartas.

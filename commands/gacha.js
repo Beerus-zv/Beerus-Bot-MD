@@ -104,8 +104,8 @@ function tablaProbabilidades() {
  * que la ayuda no pueda quedarse con cortes viejos.
  */
 function tablaBandas() {
-  // es-ES no agrupa numeros de 4 cifras por defecto, y "7500" al lado de
-  // "30.000" se lee mal: useGrouping siempre deja la tabla pareja.
+  // es-ES no agrupa numeros de 4 cifras por defecto, y "3600" al lado de
+  // "25.000" se lee mal: useGrouping siempre deja la tabla pareja.
   const miles = (n) => Number(n).toLocaleString('es-ES', { useGrouping: 'always' })
   const cortes = BANDAS_RAREZA.map((b) => {
     const r = datosRareza(b.rareza)

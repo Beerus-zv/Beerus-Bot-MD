@@ -634,14 +634,14 @@ seccion('Series en internet')
 
   const bandas = [
     [0, 'comun'],
-    [7499, 'comun'],
-    [7500, 'raro'],
-    [12499, 'raro'],
-    [12500, 'epico'],
-    [19999, 'epico'],
-    [20000, 'legendario'],
-    [29999, 'legendario'],
-    [30000, 'mitico'],
+    [799, 'comun'],
+    [800, 'raro'],
+    [3599, 'raro'],
+    [3600, 'epico'],
+    [14999, 'epico'],
+    [15000, 'legendario'],
+    [24999, 'legendario'],
+    [25000, 'mitico'],
     [39324, 'mitico'],
   ]
   const malas = bandas.filter(([fav, esperada]) => anilist.rarezaDeFavoritos(fav) !== esperada)
@@ -885,14 +885,14 @@ seccion('Rarezas del gacha')
   }
 
   const fronteras = [
-    [7499, 'comun'],
-    [7500, 'raro'],
-    [12499, 'raro'],
-    [12500, 'epico'],
-    [19999, 'epico'],
-    [20000, 'legendario'],
-    [29999, 'legendario'],
-    [30000, 'mitico'],
+    [799, 'comun'],
+    [800, 'raro'],
+    [3599, 'raro'],
+    [3600, 'epico'],
+    [14999, 'epico'],
+    [15000, 'legendario'],
+    [24999, 'legendario'],
+    [25000, 'mitico'],
   ]
   const cruzan = fronteras.filter(([f, r]) => anilist.rarezaDeFavoritos(f) !== r)
   if (!cruzan.length) {
@@ -964,7 +964,7 @@ seccion('Rarezas del gacha')
   const indice = new Map([
     ['levi', { favoritos: 38845 }],
     ['luffymonkey', { favoritos: 36000 }],
-    ['sakura|cardcaptorsakura', { favoritos: 900 }],
+    ['sakura|cardcaptorsakura', { favoritos: 700 }],
     ['sakura', { favoritos: 12000 }],
   ])
   const plan = anilist.planRarezas(
