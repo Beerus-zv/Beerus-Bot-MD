@@ -55,6 +55,9 @@ db.exec(`
 `)
 
 try { db.exec('ALTER TABLE gacha_stats ADD COLUMN ultimo_roll TEXT') } catch {}
+// Segundo contador de garantia: el alto (legendario/mitico) se mueve aparte
+// del medio (epico+), asi las dos colas tienen tope.
+try { db.exec('ALTER TABLE gacha_stats ADD COLUMN pity_alto INTEGER NOT NULL DEFAULT 0') } catch {}
 try { db.exec('ALTER TABLE economia ADD COLUMN ultimo_robo TEXT') } catch {}
 try { db.exec('ALTER TABLE usuarios ADD COLUMN genero TEXT') } catch {}
 try { db.exec('ALTER TABLE usuarios ADD COLUMN descripcion TEXT') } catch {}
@@ -100,6 +103,37 @@ try { db.exec("UPDATE vip SET jid = REPLACE(jid, '+', '') WHERE jid LIKE '+%@%'"
 try { db.exec("DELETE FROM vip WHERE jid IS NULL OR jid = ''") } catch {}
 
 import { CATALOGO_ANIME, RAREZAS } from './catalogo.js'
+
+/**
+ * Reajuste de valores del gacha.
+ *
+ * `valor` se guarda por personaje, asi que al rebalancear las rarezas las
+ * filas que ya existian conservaban el valor viejo y la coleccion quedaba
+ * tasada con dos escalas distintas. Se realinean una sola vez con la misma
+ * formula que usa la sincronizacion con AniList:
+ *   valor = base de su rareza + 5 por voto
+ *
+ * Solo toca las filas cuyo valor no coincide, asi que en arranques
+ * posteriores no escribe nada.
+ */
+try {
+  const caso = Object.entries(RAREZAS)
+    .map(([rareza, datos]) => `WHEN '${rareza}' THEN ${Number(datos.valor) || 0}`)
+    .join(' ')
+  const base = `(CASE rareza ${caso} ELSE ${Number(RAREZAS.comun.valor) || 0} END)`
+  const esperado = `${base} + 5 * (SELECT COUNT(*) FROM gacha_votos v WHERE v.personaje_id = gacha_personajes.id)`
+
+  const desalineados = db
+    .prepare(`SELECT COUNT(*) AS n FROM gacha_personajes WHERE valor != ${esperado}`)
+    .get()?.n
+
+  if (desalineados) {
+    db.exec(`UPDATE gacha_personajes SET valor = ${esperado} WHERE valor != ${esperado}`)
+    console.log(`[gacha] valores realineados: ${desalineados}`)
+  }
+} catch {
+  // El reajuste es mantenimiento: si falla, el bot arranca igual.
+}
 
 export const XP_POR_NIVEL = 250
 
@@ -475,8 +509,50 @@ export function limpiarAntiDelete(chat) { db.prepare('DELETE FROM ajustes WHERE 
 
 // Gacha personajes
 export function listarPersonajesGacha() { return db.prepare('SELECT * FROM gacha_personajes').all() }
-export function registrarRollGacha() { return true }
-export function statsGacha() { return {} }
+
+/**
+ * Anota una tirada y mueve los dos contadores de garantia.
+ *
+ *   pity      — tiradas seguidas sin epico o mejor. Sube con comun y raro,
+ *               vuelve a 0 con epico, legendario o mitico.
+ *   pity_alto — tiradas seguidas sin legendario ni mitico. Sube con comun,
+ *               raro y epico, vuelve a 0 solo con las dos altas.
+ *
+ * Es lo que alimenta las garantias de lib/gacha.js (PITY_MEDIO_DURO,
+ * PITY_SUAVE y PITY_DURO).
+ *
+ * @param {string} jid    quien tira
+ * @param {string} rareza rareza que salio
+ * @returns {{ rolls: number, pity: number, pity_alto: number, ultimo_roll: string|null }}
+ */
+export function registrarRollGacha(jid, rareza = 'comun') {
+  const media = rareza === 'epico' || rareza === 'legendario' || rareza === 'mitico'
+  const alta = rareza === 'legendario' || rareza === 'mitico'
+
+  db.prepare(`
+    INSERT INTO gacha_stats (jid, rolls, pity, pity_alto, ultimo_roll)
+    VALUES (?, 1, ?, ?, datetime('now','localtime'))
+    ON CONFLICT(jid) DO UPDATE SET
+      rolls = rolls + 1,
+      pity = CASE WHEN ? = 1 THEN 0 ELSE pity + 1 END,
+      pity_alto = CASE WHEN ? = 1 THEN 0 ELSE pity_alto + 1 END,
+      ultimo_roll = datetime('now','localtime')
+  `).run(jid, media ? 0 : 1, alta ? 0 : 1, media ? 1 : 0, alta ? 1 : 0)
+
+  return statsGacha(jid)
+}
+
+export function statsGacha(jid) {
+  const fila = db
+    .prepare('SELECT rolls, pity, pity_alto, ultimo_roll FROM gacha_stats WHERE jid = ?')
+    .get(jid)
+  return {
+    rolls: Number(fila?.rolls ?? 0),
+    pity: Number(fila?.pity ?? 0),
+    pity_alto: Number(fila?.pity_alto ?? 0),
+    ultimo_roll: fila?.ultimo_roll ?? null,
+  }
+}
 export function ventaDePersonajeActiva() { return null }
 export function setImagenPersonaje(id, url) { db.prepare('UPDATE gacha_personajes SET imagen = ? WHERE id = ?').run(url, id) }
 

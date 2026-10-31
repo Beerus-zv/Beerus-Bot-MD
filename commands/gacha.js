@@ -42,6 +42,7 @@ import {
   obtenerUltimaWaifu,
   inventarioGacha,
   statsGacha,
+  registrarRollGacha,
   agregarPersonajeGacha,
   setImagenPersonaje,
   setVideoPersonaje,
@@ -52,12 +53,11 @@ import {
   modoChat,
   configurarModo,
 } from '../database/db.js'
-import { datosRareza, formatearFicha, estadoVisible, RAREZAS } from '../lib/gacha.js'
+import { datosRareza, formatearFicha, estadoVisible, RAREZAS, elegirRareza, probabilidades, PITY_DURO, PITY_SUAVE, PITY_MEDIO_DURO } from '../lib/gacha.js'
 import { enviarCartaPersonaje } from '../lib/imagenes.js'
 import { nombreLegible, recargaActiva } from '../lib/economia.js'
 import { PERSONAJES_POR_SERIE, SERIES_POR_PAGINA } from '../lib/anilist.js'
 import { buscarOImportar, completarPersonajesSeries, personajesDeSerieInternet, listarSeriesInternet, sincronizarRarezas, tirarDeInternet } from '../lib/gacha-internet.js'
-import { elegirRareza } from '../lib/gacha.js'
 import { asegurarOwnerVip, esOwnerMsg } from '../lib/owner.js'
 
 /**
@@ -81,6 +81,21 @@ function etiquetaObjetivo(metadata, objetivo) {
     texto: soloToken ? token : `${nombre} ${token}`,
     jid: jidEtiqueta,
   }
+}
+
+/**
+ * Tabla de probabilidades para la ayuda.
+ * Sale del mismo motor que el sorteo (`probabilidades`), asi que si se
+ * reajustan los pesos la ayuda cambia sola en vez de mentir.
+ */
+function tablaProbabilidades() {
+  return probabilidades()
+    .map(({ rareza, porcentaje }) => {
+      const r = datosRareza(rareza)
+      return `${r.emoji} ${r.etiqueta}: *${porcentaje.toFixed(2)}%*`
+    })
+    .reverse()
+    .join('\n')
 }
 
 const AYUDA = `💞 *Gacha anime*
@@ -114,7 +129,16 @@ _Tira cartas, reclama personajes y haz crecer tu coleccion._
 • \`.serielist [página]\` - Series de anime por popularidad (AniList)
 • \`.serieinfo <serie>\` - Personajes de esa serie y su rareza
 
-*Rarezas (favoritos en AniList):*
+*Probabilidades por tirada:*
+${tablaProbabilidades()}
+
+*Garantía (pity):*
+• Cada *${PITY_MEDIO_DURO}* tiradas sin épico o mejor, sale épico o mejor sí o sí.
+• Desde la *${PITY_SUAVE}* sin legendario ni mítico, las dos altas suben.
+• En la *${PITY_DURO}* sin legendario ni mítico, sale una de las dos sí o sí.
+• Progreso en \`.gacha stats\`. Con rareza forzada no se mueve ninguna.
+
+*Rarezas (banda de favoritos en AniList):*
 • Mítico ≥15.000 · Legendario ≥8.000 · Épico ≥2.500 · Raro ≥750 · Común <750
 
 *Mantenimiento (owner):*
@@ -128,7 +152,9 @@ _Tira cartas, reclama personajes y haz crecer tu coleccion._
 • \`.gacha setvideo <id> <url>\` - Poner video a un personaje
 • \`.gacha setgender <id> <F|M>\` - Poner género a un personaje
 
-*Rarezas:* ⚪ Comun · 🔵 Raro · 🟣 Epico · 🟡 Legendario · 🔴 Mitico`
+*Rarezas:* ⚪ Comun · 🔵 Raro · 🟣 Epico · 🟡 Legendario · 🔴 Mitico
+
+_Con rareza forzada (\`.gacha random epico\`) no se mueve la garantía._`
 
 /** Busca un personaje por nombre, id o parcial */
 function buscarPersonaje(texto) {
@@ -970,7 +996,14 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
     // La tirada se hace directo de internet (AniList) y si el personaje no
     // esta en el catalogo se importa al vuelo. La rareza sale siempre de sus
     // favoritos (misma banda que .serielist/.serieinfo).
-    const rarezaBuscada = filtro || elegirRareza()
+    //
+    // Sin rareza forzada el sorteo usa el contador de pity del usuario, asi
+    // que la mala racha tiene tope (PITY_SUAVE sube las altas, PITY_DURO las
+    // garantiza).
+    // Sin rareza forzada el sorteo usa los dos contadores de garantia del
+    // usuario, asi que ninguna de las dos colas queda sin tope.
+    const previas = statsGacha(quien)
+    const rarezaBuscada = filtro || elegirRareza({ pity: previas.pity, pityAlto: previas.pity_alto })
     let personaje = null
     try {
       personaje = await tirarDeInternet(rarezaBuscada)
@@ -1017,6 +1050,11 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
 
     await enviarImagen(sock, jid, msg, personaje, texto)
     guardarUltimaWaifu(jid, personaje)
+
+    // Con rareza forzada no se toca el contador: si contara, se podria
+    // farmear la garantia pidiendo siempre la rareza mas baja.
+    if (!filtro) registrarRollGacha(quien, personaje.rareza)
+
     marcarUso(quien, 'roll')
     return
   }
@@ -1102,17 +1140,25 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
   if (sub === 'stats' || sub === 'estado') {
     if (await enRecarga(sock, jid, msg, quien, 'gstats')) return
 
-    const stats = statsGacha(quien) || { rolls: 0 }
+    const stats = statsGacha(quien)
     const economia = obtenerEconomia(quien)
     const inventario = inventarioGacha(quien)
     const valor = inventario.reduce((acc, i) => acc + (i.valor || 0) * (i.cantidad || 1), 0)
     const claims = reclamacionesGacha(quien)
     const valorClaims = claims.reduce((acc, c) => acc + (c.valor || 0), 0)
 
+    // Progreso de las dos garantias: el jugador ve cuando se le acerca el premio
+    const faltaMedia = Math.max(0, PITY_MEDIO_DURO - stats.pity)
+    const faltaAlta = Math.max(0, PITY_DURO - stats.pity_alto)
+
     await sock.sendMessage(jid, {
       text:
         `📊 *Tus estadísticas*\n\n` +
-        `🎰 Tiradas: *${stats.rolls ?? 0}*\n` +
+        `🎰 Tiradas: *${stats.rolls}*\n` +
+        `🟣 Épico o mejor: *${stats.pity}/${PITY_MEDIO_DURO}*` +
+        (faltaMedia ? ` _(faltan ${faltaMedia})_` : ' _(próxima tirada)_') + `\n` +
+        `🟡 Legendario o mítico: *${stats.pity_alto}/${PITY_DURO}*` +
+        (faltaAlta ? ` _(faltan ${faltaAlta})_` : ' _(próxima tirada)_') + `\n` +
         `📦 Colección: *${inventario.reduce((acc, i) => acc + (i.cantidad || 1), 0)}* (${inventario.length} distintos)\n` +
         `🏆 Valor de la colección: *${valor}* oro\n` +
         `💞 Harem: *${claims.length}* reclamos (${valorClaims} oro)\n` +

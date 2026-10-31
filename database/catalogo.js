@@ -302,12 +302,21 @@ export const GENEROS = {
   Rayquaza: 'M',
 }
 
+/**
+ * Rarezas del gacha.
+ *
+ * `peso` esta sobre 10.000 para que los porcentajes salgan exactos y se lean
+ * de un vistazo (6260 = 62,60 %). La curva sigue la de un gacha real: la
+ * rareza baja domina, las medias son el premio habitual y la alta es un
+ * suceso. `valor` escala con la escasez, asi el valor esperado por tirada
+ * se mantiene parejo aunque el reparto cambie.
+ */
 export const RAREZAS = {
-  comun: { etiqueta: 'Comun', emoji: '⚪', peso: 50, valor: 15, color: 0xd9d9d9 },
-  raro: { etiqueta: 'Raro', emoji: '🔵', peso: 28, valor: 40, color: 0x4d8cff },
-  epico: { etiqueta: 'Epico', emoji: '🟣', peso: 14, valor: 100, color: 0xa855f7 },
-  legendario: { etiqueta: 'Legendario', emoji: '🟡', peso: 7, valor: 250, color: 0xffb703 },
-  mitico: { etiqueta: 'Mitico', emoji: '🔴', peso: 1, valor: 600, color: 0xff4d6d },
+  comun: { etiqueta: 'Comun', emoji: '⚪', peso: 6260, valor: 15, color: 0xd9d9d9 },
+  raro: { etiqueta: 'Raro', emoji: '🔵', peso: 2800, valor: 45, color: 0x4d8cff },
+  epico: { etiqueta: 'Epico', emoji: '🟣', peso: 800, valor: 150, color: 0xa855f7 },
+  legendario: { etiqueta: 'Legendario', emoji: '🟡', peso: 125, valor: 600, color: 0xffb703 },
+  mitico: { etiqueta: 'Mitico', emoji: '🔴', peso: 15, valor: 2500, color: 0xff4d6d },
 }
 
 export const ORDEN_RAREZAS = ['mitico', 'legendario', 'epico', 'raro', 'comun']

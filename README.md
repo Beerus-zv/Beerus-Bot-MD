@@ -178,6 +178,18 @@ const BeerusBot = {
 ### 🎰 Gacha Anime
 
 - **Tiradas** con rarezas, valores y probabilidades reales.
+
+  | Rareza | Base | Con garantía | Valor |
+  |:---|---:|---:|---:|
+  | ⚪ Común | 62,60 % | 58,25 % | 15 🪙 |
+  | 🔵 Raro | 28,00 % | 26,23 % | 45 🪙 |
+  | 🟣 Épico | 8,00 % | 12,72 % | 150 🪙 |
+  | 🟡 Legendario | 1,25 % | 2,50 % | 600 🪙 |
+  | 🔴 Mítico | 0,15 % | 0,30 % | 2500 🪙 |
+
+- **Dos garantías** al estilo gacha real: épico o mejor cada 10 tiradas sin uno, y
+  legendario o mítico garantizado en la 90 sin ninguno (con subida gradual desde la 60).
+  Los dos contadores se ven en `.gacha stats`.
 - **Colección y harem** por usuario, con tabla de valor y favoritos.
 - **Mercado**: vender, intercambiar, regalar y reclamar cartas.
 - **Catálogo externo**: los personajes y series se resuelven contra **AniList** y las
