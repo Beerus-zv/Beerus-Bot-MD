@@ -1274,6 +1274,77 @@ if (
   mal('el menu no muestra la version de package.json', panelPrueba)
 }
 
+// ───────────── 15. Boorus NSFW: el archivo que llega ─────────────
+seccion('Boorus NSFW')
+{
+  const nsfw = await import('./lib/nsfw.js')
+  const conFirma = (firma, relleno = 2048) => Buffer.concat([Buffer.from(firma), Buffer.alloc(relleno, 0x20)])
+
+  // Gelbooru sirve el archivo solo con Referer: sin el contesta 200 y una
+  // pagina HTML de ~35 KB que terminaba enviada como imagen (burbuja gris).
+  if (nsfw.tipoReal(conFirma('<html><body>no hotlink</body></html>')) === null) {
+    ok('una pagina HTML disfrazada de 200 OK se rechaza')
+  } else {
+    mal('el motor NSFW aceptaria una pagina HTML como imagen')
+  }
+
+  const firmas = [
+    [Buffer.from([0xff, 0xd8, 0xff]), 'imagen', 'jpg'],
+    [Buffer.from([0x89, 0x50, 0x4e, 0x47]), 'imagen', 'png'],
+    [Buffer.from('GIF89a'), 'video', 'gif'],
+    [Buffer.from([0, 0, 0, 0x20]), 'video', 'mp4', 'ftypisom'],
+  ]
+  const malasFirmas = firmas.filter(([firma, tipo, extension, extra]) => {
+    const buffer = extra
+      ? Buffer.concat([Buffer.from(firma), Buffer.from(extra), Buffer.alloc(2048, 0x20)])
+      : conFirma(firma)
+    return nsfw.tipoReal(buffer) !== tipo || nsfw.extensionReal(buffer) !== extension
+  })
+  if (!malasFirmas.length) {
+    ok('la firma del archivo decide tipo y extension (el gif viaja como video)')
+  } else {
+    mal('la firma del archivo se lee mal', malasFirmas.map((f) => String(f[2])).join(', '))
+  }
+
+  // Poco peso = archivo cortado, aunque la firma exista
+  if (nsfw.tipoReal(conFirma([0xff, 0xd8, 0xff], 4)) === null) {
+    ok('un archivo cortado no pasa como imagen')
+  } else {
+    mal('un archivo de 7 bytes pasaria como imagen')
+  }
+
+  const fuente = leer('lib/nsfw.js')
+  if (fuente.includes('Referer:') && fuente.includes('cabecerasDe(') && fuente.includes('bajarArchivo(url, { maxBytes: MAX_BYTES, headers: cabeceras }')) {
+    ok('la descarga manda el Referer del booru que sirve el archivo')
+  } else {
+    mal('la descarga no manda el Referer del booru')
+  }
+
+  const rule34 = leer('commands/rule34.js')
+  if (
+    rule34.includes('await validarMedia(') &&
+    rule34.includes('extensionReal(buffer)') &&
+    /for \(let intento = 0; intento < 5/.test(rule34)
+  ) {
+    ok('/r34 valida el archivo, reintenta con otro post y usa la extension real')
+  } else {
+    mal('/r34 puede mandar un archivo roto o con el mimetype equivocado')
+  }
+
+  // WhatsApp solo reproduce video H.264 en MP4: un webm es burbuja vacia
+  const recibibles = nsfw.postRecibibles([
+    { id: 1, extension: 'webm' },
+    { id: 2, extension: 'mp4' },
+    { id: 3, extension: 'gif' },
+    { id: 4, extension: 'jpg' },
+  ])
+  if (recibibles.length === 3 && !recibibles.some((p) => p.extension === 'webm') && rule34.includes("=== 'webm'")) {
+    ok('los webm se descartan o reconvierten antes de enviar')
+  } else {
+    mal('un webm podria enviarse tal cual y quedar en burbuja vacia')
+  }
+}
+
 // ───────────── Resumen ─────────────
 console.log('')
 if (fallos) {

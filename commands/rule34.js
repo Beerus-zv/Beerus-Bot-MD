@@ -8,7 +8,7 @@
  * El post se envia como imagen (o video si es GIF/MP4) con sus tags y score.
  */
 import { nsfwActivo, ultimoUso, marcarUso } from '../database/db.js'
-import { buscarNSFW, postRecibibles, descargarPost, TAGS_AZAR, sinRepetir, marcarVisto } from '../lib/nsfw.js'
+import { buscarNSFW, postRecibibles, descargarPost, extensionReal, TAGS_AZAR, sinRepetir, marcarVisto } from '../lib/nsfw.js'
 import { mimeDe } from '../lib/descargas.js'
 import { recargaActiva } from '../lib/economia.js'
 import sharp from 'sharp'
@@ -26,6 +26,34 @@ async function aligerarImagen(buffer) {
     .flatten({ background: '#ffffff' })
     .jpeg({ quality: 94, chromaSubsampling: '4:4:4' })
     .toBuffer()
+}
+
+/**
+ * Revisa el archivo antes de mandarlo.
+ *
+ * Un booru puede contestar 200 con una imagen cortada, un PNG de 1x1 o una
+ * pagina de error, y WhatsApp entonces muestra una burbuja gris sin nada
+ * dentro. Si el archivo no sirve se lanza para que la tirada pruebe otro post.
+ */
+async function validarMedia(buffer, extension) {
+  if (['gif', 'mp4', 'webm'].includes(extension)) {
+    if (buffer.length < 8 * 1024) throw new Error(`video demasiado corto (${buffer.length} bytes)`)
+    // WhatsApp no reproduce VP8/VP9: el post viajaria como burbuja vacia
+    if (extensionReal(buffer) === 'webm') throw new Error('contenedor webm, WhatsApp no lo reproduce')
+    return
+  }
+
+  let meta = null
+  try {
+    meta = await sharp(buffer, { failOn: 'none' }).metadata()
+  } catch {
+    throw new Error('imagen ilegible')
+  }
+
+  const ancho = Number(meta?.width || 0)
+  const alto = Number(meta?.height || 0)
+  if (!ancho || !alto) throw new Error('imagen sin dimensiones')
+  if (ancho < 200 || alto < 200) throw new Error(`imagen demasiado chica (${ancho}x${alto})`)
 }
 
 export const AYUDA =
@@ -70,9 +98,10 @@ export async function ejecutarBusqueda({ sock, jid, msg, args, sender }, { azar 
       return
     }
 
-    // Hasta 3 posts al azar: si la descarga de uno falla (peso/rotura),
-    // se prueba con otro. Se descartan los que ya se mandaron en este chat
-    // con esta misma busqueda, asi dos `/r34 burnice` no repiten imagen.
+    // Hasta 5 posts al azar: si uno viene con una pagina de error del booru,
+    // roto o demasiado chico, se prueba con otro. Se descartan los que ya se
+    // mandaron en este chat con esta misma busqueda, asi dos `/r34 burnice`
+    // no repiten imagen.
     const claveVistos = `${jid}|${consulta.toLowerCase() || 'azar'}`
     const lista = sinRepetir(
       claveVistos,
@@ -83,13 +112,16 @@ export async function ejecutarBusqueda({ sock, jid, msg, args, sender }, { azar 
     let buffer = null
     let ultimoErrorDescarga = null
 
-    for (let intento = 0; intento < 3 && !buffer && lista.length; intento += 1) {
+    for (let intento = 0; intento < 5 && !buffer && lista.length; intento += 1) {
       const candidato = lista.splice(Math.floor(Math.random() * lista.length), 1)[0]
       try {
-        buffer = await descargarPost(candidato)
+        const bajado = await descargarPost(candidato)
+        await validarMedia(bajado, candidato.extension)
+        buffer = bajado
         post = candidato
       } catch (err) {
         ultimoErrorDescarga = err
+        console.warn(`[nsfw] se descarta ${candidato.fuente} ${candidato.id}: ${err.message}`)
       }
     }
 
@@ -104,8 +136,11 @@ export async function ejecutarBusqueda({ sock, jid, msg, args, sender }, { azar 
       `⭐ ${post.score} puntos\n` +
       `📥 ${post.url.slice(0, 90)}`
 
-    const esVideo = ['gif', 'mp4', 'webm'].includes(post.extension)
-    let mimetypeImagen = mimeDe(post.extension) || 'image/jpeg'
+    // La extension sale de la firma del archivo, no de lo que declare el post:
+    // un webp etiquetado como jpg viaja con mimetype equivocado y no abre.
+    const extension = extensionReal(buffer) || post.extension
+    const esVideo = ['gif', 'mp4', 'webm'].includes(extension)
+    let mimetypeImagen = mimeDe(extension) || 'image/jpeg'
 
     // Imagenes enormes: se reconvierten sin perder resolucion para que
     // WhatsApp no las rechace. El resto se envia tal cual (calidad original).
@@ -117,8 +152,8 @@ export async function ejecutarBusqueda({ sock, jid, msg, args, sender }, { azar 
     if (esVideo) {
       await sock.sendMessage(jid, {
         video: buffer,
-        mimetype: mimeDe(post.extension) || 'video/mp4',
-        gifPlayback: post.extension === 'gif',
+        mimetype: mimeDe(extension) || 'video/mp4',
+        gifPlayback: extension === 'gif',
         caption: descripcion,
         quoted: msg,
       })
