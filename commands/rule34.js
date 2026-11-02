@@ -8,7 +8,7 @@
  * El post se envia como imagen (o video si es GIF/MP4) con sus tags y score.
  */
 import { nsfwActivo, ultimoUso, marcarUso } from '../database/db.js'
-import { buscarNSFW, postRecibibles, descargarPost, extensionReal, TAGS_AZAR, sinRepetir, marcarVisto } from '../lib/nsfw.js'
+import { buscarNSFW, postRecibibles, descargarPost, extensionReal, mejoresPosts, TAGS_AZAR, sinRepetir, marcarVisto } from '../lib/nsfw.js'
 import { mimeDe } from '../lib/descargas.js'
 import { recargaActiva } from '../lib/economia.js'
 import sharp from 'sharp'
@@ -53,7 +53,7 @@ async function validarMedia(buffer, extension) {
   const ancho = Number(meta?.width || 0)
   const alto = Number(meta?.height || 0)
   if (!ancho || !alto) throw new Error('imagen sin dimensiones')
-  if (ancho < 200 || alto < 200) throw new Error(`imagen demasiado chica (${ancho}x${alto})`)
+  if (ancho < 500 || alto < 500) throw new Error(`imagen demasiado chica (${ancho}x${alto})`)
 }
 
 export const AYUDA =
@@ -62,8 +62,17 @@ export const AYUDA =
   `_El modo NSFW debe estar activado:_ \`/nsfw on\`_ (admins)_\n` +
   `_Tags por defecto si no se especifican: ${TAGS_AZAR.slice(0, 3).join(', ')}..._`
 
-/** Sale por donde la recarga o el modo NSFW bloquean; '' = puede seguir */
-function bloqueos(quien, chat, recarga) {
+/** Baraja sin tocar la lista original */
+function barajar(lista) {
+  const copia = [...lista]
+  for (let i = copia.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[copia[i], copia[j]] = [copia[j], copia[i]]
+  }
+  return copia
+}
+
+/** Sale por donde la recarga o el modo NSFW bloquean; '' = puede seguir */function bloqueos(quien, chat, recarga) {
   if (!nsfwActivo(chat)) {
     return '🚫 *El modo NSFW está desactivado aquí.*\n_Un admin puede activarlo con_ `/nsfw on`_.'
   }
@@ -88,7 +97,7 @@ export async function ejecutarBusqueda({ sock, jid, msg, args, sender }, { azar 
   })
 
   try {
-    const resultado = await buscarNSFW(consulta, { fuente })
+    const resultado = await buscarNSFW(consulta, { fuente, orden: 'calidad' })
 
     if (!resultado.fuente || !resultado.posts.length) {
       await sock.sendMessage(jid, {
@@ -98,22 +107,28 @@ export async function ejecutarBusqueda({ sock, jid, msg, args, sender }, { azar 
       return
     }
 
-    // Hasta 5 posts al azar: si uno viene con una pagina de error del booru,
-    // roto o demasiado chico, se prueba con otro. Se descartan los que ya se
-    // mandaron en este chat con esta misma busqueda, asi dos `/r34 burnice`
-    // no repiten imagen.
+    // Calidad primero: se ordenan los posts por lado corto y score, y se
+    // mandan los mejores. Antes salia un post al azar del bloque, que muchas
+    // veces era un boceto viejo o una imagen de 500 px borrosa en WhatsApp.
+    // Se descartan los que ya se mandaron en este chat con esta misma busqueda,
+    // asi dos `/r34 burnice` no repiten imagen.
     const claveVistos = `${jid}|${consulta.toLowerCase() || 'azar'}`
-    const lista = sinRepetir(
+    const recibibles = sinRepetir(
       claveVistos,
       postRecibibles(resultado.posts, { permitirVideo: true }),
     )
+    // Hasta 6 buenos al azar entre los mejores: variedad sin bajar la calidad
+    const lista = barajar(mejoresPosts(recibibles, { cantidad: 6 }))
+    // Respaldo: el resto del bloque, por si todos los buenos fallan al bajar
+    const resto = barajar(recibibles.filter((p) => !lista.includes(p)))
 
     let post = null
     let buffer = null
     let ultimoErrorDescarga = null
 
-    for (let intento = 0; intento < 5 && !buffer && lista.length; intento += 1) {
-      const candidato = lista.splice(Math.floor(Math.random() * lista.length), 1)[0]
+    for (let intento = 0; intento < 5 && !buffer; intento += 1) {
+      const candidato = lista.shift() ?? resto.shift()
+      if (!candidato) break
       try {
         const bajado = await descargarPost(candidato)
         await validarMedia(bajado, candidato.extension)

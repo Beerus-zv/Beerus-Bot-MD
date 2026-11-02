@@ -1369,6 +1369,43 @@ seccion('Boorus NSFW')
   } else {
     mal('un webm podria enviarse tal cual y quedar en burbuja vacia')
   }
+
+  // /r34 tenia que dejar de mandar el post al azar del bloque: la mitad eran
+  // bocetos viejos o recortes de 500 px que en WhatsApp se ven blandos.
+  const chico = { id: 1, ancho: 800, alto: 1200, score: 900, tags: 'ass' }
+  const grande = { id: 2, ancho: 2480, alto: 3508, score: 10, tags: 'ass' }
+  const basura = { id: 3, ancho: 4000, alto: 6000, score: 2000, tags: 'lowres sketch' }
+  const mejores = nsfw.mejoresPosts([chico, grande, basura], { cantidad: 2 })
+  if (
+    mejores.length === 1 &&
+    mejores[0].id === 2 &&
+    nsfw.calidadDeMedia(grande) > nsfw.calidadDeMedia(chico)
+  ) {
+    ok('la seleccion prefiere la resolucion alta y descarta los posts marcados como basura')
+  } else {
+    mal('la seleccion de /r34 no separa una imagen nitida de un boceto chico', JSON.stringify(mejores.map((p) => p.id)))
+  }
+
+  if (
+    nsfw.LADO_MINIMO >= 900 &&
+    /orden: 'calidad'/.test(rule34) &&
+    rule34.includes('mejoresPosts(') &&
+    !/ancho < 200 \|\| alto < 200/.test(rule34)
+  ) {
+    ok('/r34 pide el booru ordenado por score y descarta lo que baja de 500 px')
+  } else {
+    mal('/r34 puede volver a elegir al azar de un bloque sin ordenar')
+  }
+
+  // Los cuatro normalizadores tienen que traer ancho/alto/bytes: sin eso
+  // calidadDeMedia solo ve el score y elige a ciegas.
+  const conMedidas =
+    (fuente.match(/ancho: Number/g) || []).length >= 4 && (fuente.match(/bytes: Number/g) || []).length >= 3
+  if (conMedidas) {
+    ok('los posts traen ancho, alto y peso de las cuatro fuentes')
+  } else {
+    mal('hay normalizadores sin dimensiones y la seleccion elige a ciegas')
+  }
 }
 
 // ───────────── Resumen ─────────────
