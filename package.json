@@ -5,9 +5,9 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "start": "node iniciar.js",
-    "dev": "node --watch index.js",
-    "verify": "node verify.mjs",
+    "start": "node --disable-warning=ExperimentalWarning iniciar.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch index.js",
+    "verify": "node --disable-warning=ExperimentalWarning verify.mjs",
     "check": "node --check index.js && node --check lib/loader.js && node --check database/db.js",
     "test": "node verify.mjs",
     "cartas": "node scripts/refrescar-cartas.mjs",
