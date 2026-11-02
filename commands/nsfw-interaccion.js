@@ -4,12 +4,12 @@
  * fabricarAccionNSFW(clave) crea el handler de cada accion:
  *   - Solo grupos (como las interacciones SFW)
  *   - Exigen el modo NSFW activado (/nsfw on, admins)
- *   - Frase con mencion + imagen/video del tag de booru asociado
+ *   - Frase con mencion de pie de foto + GIF/video del tag de booru asociado
  *   - Mencionarse a si mismo: frase en solitario, sin media
  *   - Recarga compartida 'nsfw-accion'
  *
  * Las tiradas sueltas (ass, pussy, nekomimi) van con fabricarImagenNSFW:
- * sin mencion, devuelven una imagen del tag directo.
+ * sin mencion, devuelven el media del tag directo.
  *
  * fabricarBusquedaNSFW(fuente) reusa /rule34 con esa fuente preferida
  * (danbooru, e621).
@@ -17,7 +17,7 @@
 import { esGrupo, obtenerMetadata, resolverObjetivo, tokenMencion } from '../lib/grupo.js'
 import { nsfwActivo, ultimoUso, marcarUso } from '../database/db.js'
 import { recargaActiva } from '../lib/economia.js'
-import { buscarNSFW, postRecibible, descargarPost } from '../lib/nsfw.js'
+import { buscarNSFW, postRecibibles, descargarPost, extensionReal } from '../lib/nsfw.js'
 import { accionNSFW, fraseNSFW, listarAccionesNSFW } from '../lib/nsfw-acciones.js'
 import { mimeDe } from '../lib/descargas.js'
 
@@ -31,39 +31,92 @@ function mensajeModoApagado() {
   )
 }
 
-/** Baja el media del tag de la accion: {buffer, post} o null */
-async function mediaDeTag(tag) {
-  const resultado = await buscarNSFW(tag)
-  if (!resultado.fuente) return null
-
-  const post = postRecibible(resultado.posts)
-  if (!post) return null
-
-  let buffer
-  try {
-    buffer = await descargarPost(post)
-  } catch {
-    return null
+/** Baraja sin tocar la lista original */
+function barajar(lista) {
+  const copia = [...lista]
+  for (let i = copia.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[copia[i], copia[j]] = [copia[j], copia[i]]
   }
-
-  return { buffer, post }
+  return copia
 }
 
-/** Envio del media: imagen o video (con playback para los GIF) */
-async function enviarMedia(sock, jid, buffer, post, caption) {
-  if (['webm', 'mp4', 'gif'].includes(post.extension)) {
+/** Extensiones que viajan como GIF/video de WhatsApp */
+const ANIMADAS = ['gif', 'mp4']
+
+/**
+ * Baja el media del tag de la accion.
+ *
+ * La interaccion se responde con un GIF, asi que primero se buscan los posts
+ * animados del tag y solo si no hay ninguno se acepta una imagen fija. Si el
+ * primer post falla (roto, pesado, webm) se prueba con otro.
+ *
+ * @returns {Promise<{buffer: Buffer, post: object}|null>}
+ */
+async function mediaDeTag(tag) {
+  let respaldo = []
+
+  for (const consulta of [tag, `${tag} animated`]) {
+    let resultado = null
+    try {
+      resultado = await buscarNSFW(consulta)
+    } catch {
+      continue
+    }
+    if (!resultado?.fuente) continue
+
+    const recibibles = postRecibibles(resultado.posts, { permitirVideo: true })
+    const animadas = barajar(recibibles.filter((p) => ANIMADAS.includes(p.extension)))
+
+    for (const post of animadas.slice(0, 4)) {
+      try {
+        return { buffer: await descargarPost(post), post }
+      } catch {
+        /* post roto o bloqueado: siguiente */
+      }
+    }
+
+    if (!respaldo.length) respaldo = barajar(recibibles)
+  }
+
+  // Sin animados en el tag: la imagen fija sigue siendo mejor que nada
+  for (const post of respaldo.slice(0, 3)) {
+    try {
+      return { buffer: await descargarPost(post), post }
+    } catch {
+      /* siguiente */
+    }
+  }
+
+  return null
+}
+
+/**
+ * Envio del media en un solo mensaje: la frase va de pie de foto y las
+ * menciones dentro del mismo mensaje, como en cualquier interaccion.
+ */
+async function enviarMedia(sock, jid, media, frase, mentions, msg) {
+  const { buffer } = media
+  // La extension sale de la firma del archivo: un webp etiquetado como jpg
+  // viaja con el mimetype equivocado y WhatsApp no lo abre.
+  const extension = extensionReal(buffer) || media.post.extension
+  if (ANIMADAS.includes(extension)) {
     await sock.sendMessage(jid, {
       video: buffer,
-      mimetype: mimeDe(post.extension) || 'video/mp4',
+      mimetype: mimeDe(extension) || 'video/mp4',
       gifPlayback: true,
-      caption,
+      caption: frase,
+      mentions,
+      quoted: msg,
     })
     return
   }
   await sock.sendMessage(jid, {
     image: buffer,
-    mimetype: mimeDe(post.extension) || 'image/jpeg',
-    caption,
+    mimetype: mimeDe(extension) || 'image/jpeg',
+    caption: frase,
+    mentions,
+    quoted: msg,
   })
 }
 
@@ -109,17 +162,10 @@ export function fabricarAccionNSFW(clave, nombre = clave, permiteSolo = false) {
     const objetivo = resolverObjetivo(metadata, msg, args)
 
     // Sin mencion: si la accion permite modo solo, se ejecuta en solitario
-    // (frase solo + imagen del tag) sin exigir objetivo.
+    // (frase + GIF en un solo mensaje) sin exigir objetivo.
     if (!objetivo?.jid && permiteSolo) {
       const tokenAutor = tokenMencion(quien)
       const frase = fraseNSFW(clave, tokenAutor, '', true)
-      if (frase) {
-        await sock.sendMessage(jid, {
-          text: frase,
-          mentions: [quien],
-          quoted: msg,
-        })
-      }
 
       let mediaSolo = null
       try {
@@ -130,10 +176,16 @@ export function fabricarAccionNSFW(clave, nombre = clave, permiteSolo = false) {
 
       if (mediaSolo) {
         try {
-          await enviarMedia(sock, jid, mediaSolo.buffer, mediaSolo.post, `🏷️ ${mediaSolo.post.fuente} · 📊 ${mediaSolo.post.score}`)
+          await enviarMedia(sock, jid, mediaSolo, frase, [quien], msg)
+          marcarUso(quien, CLAVE_RECARGA)
+          return
         } catch (err) {
           console.error(`[nsfw-accion] envio ${clave}:`, err.message)
         }
+      }
+
+      if (frase) {
+        await sock.sendMessage(jid, { text: frase, mentions: [quien], quoted: msg })
       }
 
       marcarUso(quien, CLAVE_RECARGA)
@@ -162,14 +214,10 @@ export function fabricarAccionNSFW(clave, nombre = clave, permiteSolo = false) {
       return
     }
 
-    // Frase con la mencion de ambos, y debajo la imagen del tag
-    await sock.sendMessage(jid, {
-      text: fraseNSFW(clave, tokenAutor, tokenObjetivo),
-      mentions: [quien, objetivoJid],
-      quoted: msg,
-    })
+    // La frase va de pie de foto del GIF: un solo mensaje, menciones adentro
+    const frase = fraseNSFW(clave, tokenAutor, tokenObjetivo)
 
-    let media
+    let media = null
     try {
       media = await mediaDeTag(def.tag)
     } catch (err) {
@@ -179,20 +227,18 @@ export function fabricarAccionNSFW(clave, nombre = clave, permiteSolo = false) {
 
     if (!media) {
       await sock.sendMessage(jid, {
-        text: '💥 El sótano no entregó imagen para eso. Intenta de nuevo.',
+        text: '💥 El sótano no entregó nada para eso. Intenta de nuevo.',
         quoted: msg,
       })
       return
     }
 
     try {
-      await enviarMedia(sock, jid, media.buffer, media.post, `🏷️ ${media.post.fuente} · 📊 ${media.post.score}`)
+      await enviarMedia(sock, jid, media, frase, [quien, objetivoJid], msg)
     } catch (err) {
       console.error(`[nsfw-accion] envio ${clave}:`, err.message)
-      await sock.sendMessage(jid, {
-        text: `🖇️ El archivo venía demasiado pesado. Original: ${media.post.fuente} → post ${media.post.id}`,
-        quoted: msg,
-      })
+      // El archivo no salio: al menos la frase queda, con la mencion hecha
+      await sock.sendMessage(jid, { text: frase, mentions: [quien, objetivoJid], quoted: msg })
       return
     }
 
@@ -222,8 +268,6 @@ export function fabricarImagenNSFW(clave) {
       return
     }
 
-    await sock.sendMessage(jid, { text: `🔞 Buscando *${def.texto}*...`, quoted: msg })
-
     let media = null
     try {
       media = await mediaDeTag(def.tag)
@@ -240,7 +284,7 @@ export function fabricarImagenNSFW(clave) {
     }
 
     try {
-      await enviarMedia(sock, jid, media.buffer, media.post, `🏷️ ${media.post.fuente} · 📊 ${media.post.score}`)
+      await enviarMedia(sock, jid, media, `🏷️ ${media.post.fuente} · 📊 ${media.post.score}`, [], msg)
     } catch (err) {
       console.error(`[nsfw-imagen] envio ${clave}:`, err.message)
       return

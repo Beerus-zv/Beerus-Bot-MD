@@ -70,26 +70,25 @@ export function fabricarInteraccion(clave, nombre = clave) {
       return
     }
 
-    // Frase con la mencion de ambos
-    await sock.sendMessage(jid, {
-      text: fraseInteraccion(clave, tokenAutor, tokenObjetivo),
-      mentions: [quien, objetivoJid],
-      quoted: msg,
-    })
+    // La frase va de pie de foto del GIF: un solo mensaje, menciones adentro
+    const frase = fraseInteraccion(clave, tokenAutor, tokenObjetivo)
 
-    // GIF de anime (se envia como GIF de WhatsApp: video + gifPlayback)
     try {
       const gif = await gifDeInteraccion(clave)
       await sock.sendMessage(jid, {
         video: gif,
         mimetype: 'video/mp4',
         gifPlayback: true,
+        caption: frase,
+        mentions: [quien, objetivoJid],
         quoted: msg,
       })
     } catch (err) {
       console.error(`[interaccion] ${clave}:`, err.message)
+      // Sin GIF queda al menos la frase con las menciones hechas
       await sock.sendMessage(jid, {
-        text: '💥 El conversor de GIF no respondió. Intenta de nuevo.',
+        text: frase,
+        mentions: [quien, objetivoJid],
         quoted: msg,
       })
       return

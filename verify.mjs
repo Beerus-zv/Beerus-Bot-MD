@@ -453,6 +453,29 @@ seccion('Interacciones')
 
   if (usaGif && sinSticker && exporta) ok('las interacciones responden con GIF (gifPlayback), no con sticker')
   else mal('las interacciones no usan GIF', [!usaGif && 'falta gifPlayback', !sinSticker && 'sigue usando stickers', !exporta && 'falta gifDeInteraccion'].filter(Boolean).join(', '))
+
+  // Un solo mensaje: la frase va de pie de foto del GIF, con las menciones
+  // adentro. Antes salian dos (texto + GIF) y quedaba feo en el chat.
+  const gifConFrase = /gifPlayback:\s*true,[\s\S]{0,200}?caption:\s*frase,[\s\S]{0,120}?mentions:\s*\[quien,\s*objetivoJid\]/.test(cmd)
+  if (gifConFrase) {
+    ok('la interaccion sale en un solo mensaje: GIF con la frase de pie y las menciones')
+  } else {
+    mal('la interaccion sigue partida en frase + GIF, o el GIF va sin menciones')
+  }
+
+  const nsfwCmd = leer('commands/nsfw-interaccion.js')
+  const nsfwSingle = /caption:\s*frase,[\s\S]{0,120}?mentions,/.test(nsfwCmd)
+  const nsfwAnimadas = /const ANIMADAS = \['gif', 'mp4'\]/.test(nsfwCmd) && /`\$\{tag\} animated`/.test(nsfwCmd)
+  if (nsfwSingle) {
+    ok('las acciones NSFW contestan con la frase de pie de foto y las menciones adentro')
+  } else {
+    mal('las acciones NSFW siguen mandando la frase aparte del media')
+  }
+  if (nsfwAnimadas) {
+    ok('las acciones NSFW priorizan posts animados (gif/mp4) sobre la imagen fija')
+  } else {
+    mal('las acciones NSFW no buscan el tag animado')
+  }
 }
 
 // ───────────── 11. Retratos de alta calidad ─────────────
