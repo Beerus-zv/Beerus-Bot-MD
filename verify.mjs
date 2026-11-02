@@ -465,16 +465,19 @@ seccion('Interacciones')
 
   const nsfwCmd = leer('commands/nsfw-interaccion.js')
   const nsfwSingle = /caption:\s*frase,[\s\S]{0,120}?mentions,/.test(nsfwCmd)
-  const nsfwAnimadas = /const ANIMADAS = \['gif', 'mp4'\]/.test(nsfwCmd) && /`\$\{tag\} animated`/.test(nsfwCmd)
+  const nsfwAnimadas =
+    /const FUENTES_ANIMADAS = \[[^\]]*gelbooru/.test(nsfwCmd) &&
+    /ANIMADAS\.includes\(p\.extension\)/.test(nsfwCmd) &&
+    /coincide\(p, tags\)/.test(nsfwCmd)
   if (nsfwSingle) {
     ok('las acciones NSFW contestan con la frase de pie de foto y las menciones adentro')
   } else {
     mal('las acciones NSFW siguen mandando la frase aparte del media')
   }
   if (nsfwAnimadas) {
-    ok('las acciones NSFW priorizan posts animados (gif/mp4) sobre la imagen fija')
+    ok('las acciones NSFW buscan el tag animado en los boorus que sirven GIF y exigen que el tag coincida')
   } else {
-    mal('las acciones NSFW no buscan el tag animado')
+    mal('las acciones NSFW no buscan el tag animado o no verifican el tag del post')
   }
 }
 
@@ -1337,7 +1340,7 @@ seccion('Boorus NSFW')
   }
 
   const fuente = leer('lib/nsfw.js')
-  if (fuente.includes('Referer:') && fuente.includes('cabecerasDe(') && fuente.includes('bajarArchivo(url, { maxBytes: MAX_BYTES, headers: cabeceras }')) {
+  if (fuente.includes('Referer:') && fuente.includes('cabecerasDe(') && fuente.includes('headers: cabeceras')) {
     ok('la descarga manda el Referer del booru que sirve el archivo')
   } else {
     mal('la descarga no manda el Referer del booru')

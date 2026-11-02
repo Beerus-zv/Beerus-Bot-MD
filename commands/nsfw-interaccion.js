@@ -44,48 +44,114 @@ function barajar(lista) {
 /** Extensiones que viajan como GIF/video de WhatsApp */
 const ANIMADAS = ['gif', 'mp4']
 
+/** Tope de peso para el GIF/video: uno de 15 MB tarda medio minuto en bajar */
+const MAX_VIDEO = 6 * 1024 * 1024
+
+/**
+ * Boorus que sirven GIF/MP4 de verdad. yande.re y konachan casi no tienen
+ * animados, y la cadena por defecto empieza por yande.re: por eso las
+ * interacciones salian en imagen fija aunque el tag tuviera animacion.
+ */
+const FUENTES_ANIMADAS = ['gelbooru.com', 'e621.net', 'danbooru.donmai.us']
+
+/** Un "video" de menos de esto es un archivo cortado, no una animacion */
+const MIN_VIDEO = 100 * 1024
+
+/**
+ * Paginas que se piden para un tag de accion. Con la pagina al azar de /r34
+ * (20) muchas tiradas caian en un bloque sin posts del tag; para interaccion
+ * se muestrea cerca del principio, que siempre tiene material.
+ */
+const PAGINAS_INTERACCION = 3
+
+/** Tags reales del post (separados por espacio o por coma, segun el booru) */
+function tagsDelPost(post) {
+  return new Set(
+    String(post?.tags || '')
+      .toLowerCase()
+      .split(/[\s,]+/)
+      .filter(Boolean),
+  )
+}
+
+/** El post tiene que llevar de verdad alguno de los tags de la accion */
+function coincide(post, tags) {
+  const delPost = tagsDelPost(post)
+  return tags.some((t) => delPost.has(t))
+}
+
 /**
  * Baja el media del tag de la accion.
  *
- * La interaccion se responde con un GIF, asi que primero se buscan los posts
- * animados del tag y solo si no hay ninguno se acepta una imagen fija. Si el
- * primer post falla (roto, pesado, webm) se prueba con otro.
+ * La interaccion se responde con un GIF alusivo al comando, asi que:
+ *   1. se buscan animados del tag en los boorus que sirven video;
+ *   2. si no hay, el tag en cualquier fuente, animado primero;
+ *   3. y solo como ultimo recurso una imagen fija.
  *
+ * Un booru que no conoce el tag devuelve cualquier cosa, asi que el post
+ * tiene que traer el tag en su lista o se descarta.
+ *
+ * @param {{tags?: string[], tag?: string}} def ficha de la accion
  * @returns {Promise<{buffer: Buffer, post: object}|null>}
  */
-async function mediaDeTag(tag) {
-  let respaldo = []
+export async function mediaDeTag(def) {
+  const tags = def?.tags?.length ? def.tags : [def?.tag].filter(Boolean)
+  if (!tags.length) return null
+  const vistos = new Set()
 
-  for (const consulta of [tag, `${tag} animated`]) {
+  const candidatos = (posts, soloAnimadas) =>
+    postRecibibles(posts, { permitirVideo: true }).filter(
+      (p) => coincide(p, tags) && (!soloAnimadas || ANIMADAS.includes(p.extension)),
+    )
+
+  const intentar = async (lista, maxBytes) => {
+    for (const post of barajar(lista).slice(0, 4)) {
+      const clave = `${post.fuente}:${post.id}`
+      if (vistos.has(clave)) continue
+      vistos.add(clave)
+      try {
+        const buffer = await descargarPost(post, maxBytes ? { maxBytes } : {})
+        if (ANIMADAS.includes(post.extension) && buffer.length < MIN_VIDEO) {
+          throw new Error(`video cortado (${buffer.length} bytes)`)
+        }
+        return { buffer, post }
+      } catch {
+        /* post roto, bloqueado o webm: siguiente */
+      }
+    }
+    return null
+  }
+
+  // 1. Animados del tag en los boorus que sirven GIF/MP4
+  for (const fuente of FUENTES_ANIMADAS) {
+    for (const tag of tags) {
+      let resultado = null
+      try {
+        resultado = await buscarNSFW(tag, { fuente, paginas: PAGINAS_INTERACCION, exacto: true })
+      } catch {
+        continue
+      }
+      if (!resultado?.fuente) continue
+      const media = await intentar(candidatos(resultado.posts, true), MAX_VIDEO)
+      if (media) return media
+    }
+  }
+
+  // 2. El tag a secas (animado primero), y 3. la imagen fija como respaldo
+  for (const tag of tags) {
     let resultado = null
     try {
-      resultado = await buscarNSFW(consulta)
+      resultado = await buscarNSFW(tag, { paginas: PAGINAS_INTERACCION, exacto: true })
     } catch {
       continue
     }
     if (!resultado?.fuente) continue
 
-    const recibibles = postRecibibles(resultado.posts, { permitirVideo: true })
-    const animadas = barajar(recibibles.filter((p) => ANIMADAS.includes(p.extension)))
-
-    for (const post of animadas.slice(0, 4)) {
-      try {
-        return { buffer: await descargarPost(post), post }
-      } catch {
-        /* post roto o bloqueado: siguiente */
-      }
-    }
-
-    if (!respaldo.length) respaldo = barajar(recibibles)
-  }
-
-  // Sin animados en el tag: la imagen fija sigue siendo mejor que nada
-  for (const post of respaldo.slice(0, 3)) {
-    try {
-      return { buffer: await descargarPost(post), post }
-    } catch {
-      /* siguiente */
-    }
+    const recibibles = candidatos(resultado.posts, false)
+    const media =
+      (await intentar(recibibles.filter((p) => ANIMADAS.includes(p.extension)), MAX_VIDEO)) ??
+      (await intentar(recibibles.filter((p) => !ANIMADAS.includes(p.extension))))
+    if (media) return media
   }
 
   return null
@@ -169,7 +235,7 @@ export function fabricarAccionNSFW(clave, nombre = clave, permiteSolo = false) {
 
       let mediaSolo = null
       try {
-        mediaSolo = await mediaDeTag(def.tag)
+        mediaSolo = await mediaDeTag(def)
       } catch (err) {
         console.error(`[nsfw-accion] ${clave}:`, err.message)
       }
@@ -219,7 +285,7 @@ export function fabricarAccionNSFW(clave, nombre = clave, permiteSolo = false) {
 
     let media = null
     try {
-      media = await mediaDeTag(def.tag)
+      media = await mediaDeTag(def)
     } catch (err) {
       console.error(`[nsfw-accion] ${clave}:`, err.message)
       media = null
@@ -270,7 +336,7 @@ export function fabricarImagenNSFW(clave) {
 
     let media = null
     try {
-      media = await mediaDeTag(def.tag)
+      media = await mediaDeTag(def)
     } catch (err) {
       console.error(`[nsfw-imagen] ${clave}:`, err.message)
     }
