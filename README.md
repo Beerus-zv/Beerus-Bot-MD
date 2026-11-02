@@ -190,13 +190,17 @@ const BeerusBot = {
 - **Dos garantías** al estilo gacha real: épico o mejor cada 10 tiradas sin uno, y
   legendario o mítico garantizado en la 90 sin ninguno (con subida gradual desde la 60).
   Los dos contadores se ven en `.gacha stats`.
-- **Rarezas por favoritos reales**: la banda sale de los favoritos de AniList
-  (mítico ≥15.146 · legendario ≥6.994 · épico ≥2.507 · raro ≥722). Los cortes no
-  son números redondos a propósito: son los **cuantiles geométricos** del pool
-  alcanzable de AniList (5.000 personajes, tope duro de la API), donde cada banda
-  triplica a la de arriba — **50 míticos · 150 legendarios · 450 épicos · 1.348
-  raros · 2.909 comunes**, o sea 1,02 / 3,06 / 9,17 / 27,47 / 59,28 % del pool.
-  La popularidad de la serie solo desempata dentro de la banda, nunca sube de tier.
+- **Rareza por popularidad, serie e importancia**: el score (0-100) mezcla **55 %
+  favoritos del personaje + 20 % popularidad de la serie + 25 % peso del personaje
+  dentro de su reparto** (sus favoritos contra los del más querido de esa misma
+  serie). Los dos primeros van en escala **logarítmica** (`20·log10`), porque los
+  favoritos van de 50 a 40.000 y la popularidad de 1.000 a 900.000.
+  Así un secundario de una serie enorme ya no nace mítico solo por su serie, y un
+  protagonista de una serie de nicho pesa más que un extra de su mismo reparto.
+- **Cortes medidos, no a ojo**: son los cuantiles del pool alcanzable de AniList
+  (5.000 personajes) — mítico ≥85 · legendario ≥79 · épico ≥71 · raro ≥61. El
+  reparto queda **1 / 3 / 9 / 27 / 59 %** del pool: 47 míticos · 142 legendarios ·
+  427 épicos · 1.281 raros · 2.845 comunes.
 - **Roster y tasa de tirada son cosas distintas**: que el 1 % del pool sea mítico
   y el sorteo dé mítico el 0,15 % es lo normal en un gacha real (los 5★ de un
   gacha comercial andan en 0,6 % de tirada y son el 30-40 % del roster). Así una

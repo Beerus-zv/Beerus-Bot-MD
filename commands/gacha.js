@@ -101,18 +101,16 @@ function tablaProbabilidades() {
 /**
  * Linea de bandas de rareza para la ayuda.
  * Se arma con BANDAS_RAREZA, la misma tabla que decide la rareza real, para
- * que la ayuda no pueda quedarse con cortes viejos.
+ * que la ayuda no pueda quedarse con cortes viejos. El numero es el score
+ * compuesto (favoritos + serie + importancia), de 0 a 100.
  */
 function tablaBandas() {
-  // es-ES no agrupa numeros de 4 cifras por defecto, y "3600" al lado de
-  // "25.000" se lee mal: useGrouping siempre deja la tabla pareja.
-  const miles = (n) => Number(n).toLocaleString('es-ES', { useGrouping: 'always' })
   const cortes = BANDAS_RAREZA.map((b) => {
     const r = datosRareza(b.rareza)
-    return `${r.emoji} ${r.etiqueta} ≥${miles(b.favoritos)}`
+    return `${r.emoji} ${r.etiqueta} ≥${b.puntaje}`
   })
   const comun = datosRareza('comun')
-  return [...cortes, `${comun.emoji} ${comun.etiqueta} <${miles(BANDAS_RAREZA.at(-1).favoritos)}`].join(' · ')
+  return [...cortes, `${comun.emoji} ${comun.etiqueta} <${BANDAS_RAREZA.at(-1).puntaje}`].join(' · ')
 }
 
 const AYUDA = `💞 *Gacha anime*
@@ -155,7 +153,7 @@ ${tablaProbabilidades()}
 • En la *${PITY_DURO}* sin legendario ni mítico, sale una de las dos sí o sí.
 • Progreso en \`.gacha stats\`. Con rareza forzada no se mueve ninguna.
 
-*Rarezas (banda de favoritos en AniList):*
+*Rarezas (score = favoritos + popularidad de la serie + peso en el reparto):*
 ${tablaBandas()}
 
 *Mantenimiento (owner):*

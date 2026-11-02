@@ -658,23 +658,72 @@ seccion('Series en internet')
 {
   const anilist = await import('./lib/anilist.js')
 
-  const bandas = [
-    [0, 'comun'],
-    [721, 'comun'],
-    [722, 'raro'],
-    [2506, 'raro'],
-    [2507, 'epico'],
-    [6993, 'epico'],
-    [6994, 'legendario'],
-    [15145, 'legendario'],
-    [15146, 'mitico'],
-    [39324, 'mitico'],
-  ]
-  const malas = bandas.filter(([fav, esperada]) => anilist.rarezaDeFavoritos(fav) !== esperada)
-  if (!malas.length) {
-    ok('la rareza sale de la banda de favoritos de AniList')
+  // La rareza ya no es una franja de favoritos: pesa tambien la serie y el
+  // lugar del personaje en su reparto.
+  const componentes =
+    Math.round(anilist.popularidadDelPersonaje(1000) * 10) / 10 === 60 &&
+    Math.round(anilist.popularidadDeLaSerie(100000) * 10) / 10 === 60 &&
+    anilist.importanciaEnLaSerie(500, 1000) === 50 &&
+    anilist.importanciaEnLaSerie(1000, 1000) === 100 &&
+    Math.abs(
+      (anilist.PESOS_RAREZA.personaje + anilist.PESOS_RAREZA.serie + anilist.PESOS_RAREZA.importancia) - 1,
+    ) < 1e-9
+  if (componentes) {
+    ok('el score mezcla popularidad del personaje, popularidad de la serie e importancia (pesos suman 1)')
   } else {
-    mal('bandas de rareza mal calculadas', malas.map(([f]) => `${f}->${anilist.rarezaDeFavoritos(f)}`).join(', '))
+    mal('los componentes del score de rareza no miden lo que dicen')
+  }
+
+  // Mismo personaje, misma serie: el que manda en el reparto sube de banda.
+  const lider = anilist.calcularRarezaScore({
+    favoritos: 9000,
+    media: { popularity: 200000 },
+    serieMaximo: 9000,
+  })
+  const extra = anilist.calcularRarezaScore({
+    favoritos: 900,
+    media: { popularity: 200000 },
+    serieMaximo: 9000,
+  })
+  if (lider > extra && anilist.rarezaDesdeScore(lider) !== anilist.rarezaDesdeScore(extra)) {
+    ok('un protagonista supera a un secundario de su misma serie con menos favoritos')
+  } else {
+    mal('la importancia dentro de la serie no mueve la rareza', `${lider} vs ${extra}`)
+  }
+
+  // Mismos favoritos, series distintas: pesa la popularidad de la serie.
+  const serieGrande = anilist.calcularRarezaScore({
+    favoritos: 3000,
+    media: { popularity: 700000 },
+    serieMaximo: 3000,
+  })
+  const serieChica = anilist.calcularRarezaScore({
+    favoritos: 3000,
+    media: { popularity: 1200 },
+    serieMaximo: 3000,
+  })
+  if (serieGrande > serieChica) {
+    ok('entre dos personajes igual de queridos gana el de la serie mas popular')
+  } else {
+    mal('la popularidad de la serie no influye en la rareza', `${serieGrande} vs ${serieChica}`)
+  }
+
+  const bandas = [
+    [60, 'comun'],
+    [61, 'raro'],
+    [70, 'raro'],
+    [71, 'epico'],
+    [78, 'epico'],
+    [79, 'legendario'],
+    [84, 'legendario'],
+    [85, 'mitico'],
+    [100, 'mitico'],
+  ]
+  const malas = bandas.filter(([score, esperada]) => anilist.rarezaDesdeScore(score) !== esperada)
+  if (!malas.length) {
+    ok('la rareza sale de los cortes del score compuesto')
+  } else {
+    mal('bandas de rareza mal calculadas', malas.map(([s]) => `${s}->${anilist.rarezaDesdeScore(s)}`).join(', '))
   }
 
   const serie = anilist.serieDeMedia({
@@ -700,13 +749,16 @@ seccion('Series en internet')
     mal('serieDeMedia no normaliza la serie', JSON.stringify(serie))
   }
 
-  const pj = anilist.personajeDeNodo({
-    name: { full: 'Levi' },
-    image: { large: 'https://img.test/levi.jpg' },
-    gender: 'Male',
-    favourites: 38845,
-    media: { nodes: [{ meanScore: 85, popularity: 350000, seasonYear: 2013 }] },
-  })
+  const pj = anilist.personajeDeNodo(
+    {
+      name: { full: 'Levi' },
+      image: { large: 'https://img.test/levi.jpg' },
+      gender: 'Male',
+      favourites: 38845,
+      media: { nodes: [{ meanScore: 85, popularity: 350000, seasonYear: 2013 }] },
+    },
+    { serieMaximo: 38845 },
+  )
   if (
     pj?.nombre === 'Levi' &&
     pj.rareza === 'mitico' &&
@@ -910,21 +962,16 @@ seccion('Rarezas del gacha')
     mal('la tirada no prioriza internet o perdio la tirada libre de respaldo')
   }
 
-  const fronteras = [
-    [721, 'comun'],
-    [722, 'raro'],
-    [2506, 'raro'],
-    [2507, 'epico'],
-    [6993, 'epico'],
-    [6994, 'legendario'],
-    [15145, 'legendario'],
-    [15146, 'mitico'],
-  ]
-  const cruzan = fronteras.filter(([f, r]) => anilist.rarezaDeFavoritos(f) !== r)
-  if (!cruzan.length) {
-    ok('los bordes de rareza de la tirada coinciden con los de las listas')
+  // La tirada y las listas tienen que decidir la banda con la MISMA funcion:
+  // si la tirada usara una franja de favoritos y las listas el score, la
+  // misma carta aparecerraria con dos rarezas distintas.
+  const usaMisma =
+    /rarezaDesdeScore\(\s*calcularRarezaScore\(/.test(fuente.replace(/\s+/g, ' ')) &&
+    !/rarezaDeFavoritos\(/.test(fuente.slice(fuente.indexOf('export async function tirarDeInternet')))
+  if (usaMisma) {
+    ok('la tirada y las listas deciden la banda con el mismo score')
   } else {
-    mal('bordes de rareza distintos a las listas', cruzan.map(([f]) => `${f}->${anilist.rarezaDeFavoritos(f)}`).join(', '))
+    mal('la tirada puede dar una rareza distinta a la de las listas')
   }
 
   // Bug que llego a produccion: filaSimilar usaba `distancia` sin importarla,
@@ -988,16 +1035,16 @@ seccion('Rarezas del gacha')
   }
 
   const indice = new Map([
-    ['levi', { favoritos: 38845 }],
-    ['luffymonkey', { favoritos: 36000 }],
-    ['sakura|cardcaptorsakura', { favoritos: 700 }],
-    ['sakura', { favoritos: 12000 }],
+    ['levi', { favoritos: 38845, media: { popularity: 350000 }, serieMaximo: 38845 }],
+    ['luffymonkey', { favoritos: 36000, media: { popularity: 700000 }, serieMaximo: 36000 }],
+    ['sakura|cardcaptorsakura', { favoritos: 700, media: { popularity: 50000 }, serieMaximo: 700 }],
+    ['sakura', { favoritos: 12000, media: { popularity: 90000 }, serieMaximo: 12000 }],
   ])
   const plan = anilist.planRarezas(
     [
-      { id: 1, nombre: 'Levi', anime: 'Shingeki no Kyojin', rareza: 'comun', favoritos: 38845 },
-      { id: 2, nombre: 'Luffy Monkey', anime: 'One Piece', rareza: 'mitico', favoritos: 36000 },
-      { id: 3, nombre: 'Sakura', anime: 'Cardcaptor Sakura', rareza: 'epico', favoritos: null },
+      { id: 1, nombre: 'Levi', anime: 'Shingeki no Kyojin', rareza: 'comun', favoritos: 38845, serie_pop: 350000, importancia: 100 },
+      { id: 2, nombre: 'Luffy Monkey', anime: 'One Piece', rareza: 'mitico', favoritos: 36000, serie_pop: 700000, importancia: 100 },
+      { id: 3, nombre: 'Sakura', anime: 'Cardcaptor Sakura', rareza: 'epico', favoritos: null, serie_pop: 50000, importancia: 100 },
       { id: 4, nombre: 'Nadie', anime: 'Desconocida', rareza: 'comun' },
     ],
     indice,
@@ -1011,8 +1058,9 @@ seccion('Rarezas del gacha')
     levi.cambia === true &&
     luffy?.cambia === false &&
     luffy?.favoritos === 36000 &&
-    sakura?.rareza === 'comun' &&
+    sakura?.rareza === 'raro' &&
     sakura.cambia === true &&
+    sakura?.importancia === 100 &&
     !plan.some((p) => p.id === 4)
   ) {
     ok('planRarezas corrige solo lo que cambia, respeta la serie exacta y empareja variantes')
@@ -1022,7 +1070,7 @@ seccion('Rarezas del gacha')
 
   const sincroFuente = fuente.slice(fuente.indexOf('export async function sincronizarRarezas'))
   if (
-    sincroFuente.includes('planRarezas(filas, indice)') &&
+    sincroFuente.includes('planRarezas(filas, indice, maximos)') &&
     sincroFuente.includes('actualizarRarezaPersonaje(') &&
     sincroFuente.includes('guardarAjuste(CLAVE_SYNC') &&
     sincroFuente.includes('internetApagada()') &&

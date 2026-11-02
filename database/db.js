@@ -63,6 +63,10 @@ try { db.exec('ALTER TABLE usuarios ADD COLUMN genero TEXT') } catch {}
 try { db.exec('ALTER TABLE usuarios ADD COLUMN descripcion TEXT') } catch {}
 try { db.exec('ALTER TABLE gacha_personajes ADD COLUMN video TEXT') } catch {}
 try { db.exec('ALTER TABLE gacha_personajes ADD COLUMN favoritos INTEGER') } catch {}
+// Popularidad de la serie y peso del personaje en su reparto: los otros dos
+// tercios del score de rareza (el resto son los favoritos propios).
+try { db.exec('ALTER TABLE gacha_personajes ADD COLUMN serie_pop INTEGER') } catch {}
+try { db.exec('ALTER TABLE gacha_personajes ADD COLUMN importancia INTEGER') } catch {}
 try { db.exec('ALTER TABLE vip ADD COLUMN ultimo_boost TEXT') } catch {}
 // Persona = digitos del telefono (o del LID si no se conoce): agrupa las
 // filas PN y LID de un mismo miembro en la lista del club.
@@ -635,15 +639,18 @@ export function favoritoGacha(jid) {
   if (!row) return undefined
   return { id: row.id, nombre: row.nombre, anime: row.anime }
 }
-export function agregarPersonajeGacha({ nombre, anime, rareza, imagen = null, genero = null, favoritos = null } = {}) {
+export function agregarPersonajeGacha({ nombre, anime, rareza, imagen = null, genero = null, favoritos = null, seriePop = null, importancia = null } = {}) {
   const valor = (RAREZAS && RAREZAS[rareza]?.valor) ?? 15
-  const r = db.prepare('INSERT INTO gacha_personajes (nombre, anime, rareza, valor, imagen, genero, favoritos) VALUES (?,?,?,?,?,?,?)').run(nombre, anime, rareza, valor, imagen, genero ?? '', favoritos)
+  const r = db.prepare('INSERT INTO gacha_personajes (nombre, anime, rareza, valor, imagen, genero, favoritos, serie_pop, importancia) VALUES (?,?,?,?,?,?,?,?,?)').run(nombre, anime, rareza, valor, imagen, genero ?? '', favoritos, seriePop, importancia)
   return Number(r.lastInsertRowid)
 }
 
-/** Reescribe rareza, valor y favoritos de una fila (sincronizacion con AniList) */
-export function actualizarRarezaPersonaje(id, rareza, valor, favoritos = null) {
-  db.prepare('UPDATE gacha_personajes SET rareza = ?, valor = ?, favoritos = ? WHERE id = ?').run(rareza, valor, favoritos, id)
+/**
+ * Reescribe rareza, valor y los tres numeros que la sostienen (favoritos del
+ * personaje, popularidad de la serie e importancia dentro de ella).
+ */
+export function actualizarRarezaPersonaje(id, rareza, valor, favoritos = null, { seriePop = null, importancia = null } = {}) {
+  db.prepare('UPDATE gacha_personajes SET rareza = ?, valor = ?, favoritos = ?, serie_pop = ?, importancia = ? WHERE id = ?').run(rareza, valor, favoritos, seriePop, importancia, id)
   return true
 }
 
