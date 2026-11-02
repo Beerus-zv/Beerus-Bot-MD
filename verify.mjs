@@ -1455,6 +1455,15 @@ seccion('Boorus NSFW')
     mal('hay normalizadores sin dimensiones y la seleccion elige a ciegas')
   }
 
+  // gelbooru manda `sample: 1` (bandera) y la muestra real en `sample_url`, y
+  // el md5 del archivo en `md5`. Sin la muestra un original de 30 MB se
+  // descartaba entero; sin el md5 el mismo arte espejado pasaba por nuevo.
+  if (/p\.sample_url/.test(fuente) && /p\.hash \|\| p\.md5/.test(fuente)) {
+    ok('gelbooru aporta la muestra real y el md5 para el dedupe entre boorus')
+  } else {
+    mal('gelbooru se quedaria sin copia de respaldo y sin hash')
+  }
+
   // Una sola fuente son 50 posts y la seleccion devolvia siempre los mismos
   // seis: la busqueda tiene que juntar varias fuentes (barajadas) y pedir mas
   // de una pagina por fuente.

@@ -109,6 +109,9 @@ export const BANNER_LOCAL = 'assets/beerus-banner.png'
  *
  * Se pueden sobrescribir por entorno (GELBOORU_API_KEY / GELBOORU_USER_ID)
  * para no dejar la clave en el repositorio.
+ *
+ * Cuenta: Beerus_zv (user_id 2084405). La key se saca de
+ * https://gelbooru.com/index.php?page=account&s=options
  */
 export const GELBOORU_API_KEY =
   process.env.GELBOORU_API_KEY ||
