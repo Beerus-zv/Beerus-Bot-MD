@@ -1460,16 +1460,34 @@ seccion('Boorus NSFW')
   // de una pagina por fuente.
   const fuentes = nsfw.NOMBRES_FUENTES || []
   const junta =
-    fuentes.length >= 6 &&
-    ['tbib.org', 'hypnohub.net', 'danbooru.donmai.us'].every((f) => fuentes.includes(f)) &&
+    fuentes.length >= 7 &&
+    ['tbib.org', 'hypnohub.net', 'danbooru.donmai.us', 'xbooru.com'].every((f) => fuentes.includes(f)) &&
     /elegirFuentes\(/.test(fuente) &&
-    /barajar\(FUENTES\)/.test(fuente) &&
+    /barajar\(FUENTES\.filter/.test(fuente) &&
     /Promise\.all\(seleccion\.map/.test(fuente) &&
     /PAGINAS_POR_FUENTE = 2/.test(fuente)
   if (junta) {
     ok('/r34 junta varias fuentes en paralelo y pide dos paginas por fuente')
   } else {
     mal('/r34 puede volver a depender de una sola fuente y repetir el bloque', fuentes.join(', '))
+  }
+
+  // rule34.xxx exige user_id y api_key propios: sin key el DAPI contesta
+  // "Missing authentication", asi que la fuente tiene que quedar afuera sola
+  // en lugar de gastar peticiones en un 200 con texto.
+  const config = await import('./config.js')
+  const disponibles = nsfw.fuentesDisponibles()
+  const sinKey = !config.RULE34_API_KEY
+  const rule34Bien =
+    fuentes.includes('rule34.xxx') &&
+    disponibles.includes('xbooru.com') &&
+    (sinKey ? !disponibles.includes('rule34.xxx') : disponibles.includes('rule34.xxx')) &&
+    /api\.rule34\.xxx\/index\.php/.test(fuente) &&
+    /api_key=\$\{RULE34_API_KEY\}&user_id=\$\{RULE34_USER_ID\}/.test(fuente)
+  if (rule34Bien) {
+    ok('rule34.xxx usa api_key/user_id y queda apagada mientras no haya key')
+  } else {
+    mal('rule34.xxx no respeta la credencial o gasta peticiones sin key', disponibles.join(', '))
   }
 
   // El mismo arte vive espejado en tbib, danbooru y hypnohub con ids distintos:

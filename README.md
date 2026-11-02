@@ -596,6 +596,8 @@ Todo vive en `config.js`, sin tocar el resto del código.
 | `BANNER_LOCAL` | `'assets/beerus-banner.png'` | Respaldo sin red y avatar |
 | `GELBOORU_API_KEY` | — | Credencial del DAPI de Gelbooru |
 | `GELBOORU_USER_ID` | — | `user_id` que acompaña a la key |
+| `RULE34_API_KEY` | — | Credencial del DAPI de rule34.xxx (sin ella la fuente queda apagada) |
+| `RULE34_USER_ID` | `2` | `user_id` que acompaña a la key de rule34.xxx |
 
 **Banderas de arranque:**
 
@@ -613,6 +615,8 @@ node iniciar.js --no-update # arrancar sin actualizador
 | `BEERUS_NO_UPDATE=1` | Igual que `--no-update` |
 | `GELBOORU_API_KEY` | Sobrescribe la key de Gelbooru de `config.js` |
 | `GELBOORU_USER_ID` | Sobrescribe el `user_id` de Gelbooru |
+| `RULE34_API_KEY` | Sobrescribe la key de rule34.xxx de `config.js` |
+| `RULE34_USER_ID` | Sobrescribe el `user_id` de rule34.xxx |
 
 **Modos por chat** (`/modos` muestra el estado de todos):
 

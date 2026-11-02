@@ -116,3 +116,16 @@ export const GELBOORU_API_KEY =
 
 export const GELBOORU_USER_ID = process.env.GELBOORU_USER_ID || '2084405'
 
+/**
+ * ── API de rule34.xxx ──
+ * Su DAPI pide `user_id` y `api_key` de la cuenta:
+ * https://rule34.xxx/index.php?page=account&s=options
+ * Sin key contesta {"Missing authentication"}, asi que la fuente queda
+ * apagada (cero peticiones) hasta que haya credencial aca o por entorno.
+ *
+ * Se pueden sobrescribir por entorno (RULE34_API_KEY / RULE34_USER_ID).
+ */
+export const RULE34_API_KEY = process.env.RULE34_API_KEY || ''
+
+export const RULE34_USER_ID = process.env.RULE34_USER_ID || '2'
+
