@@ -1445,14 +1445,46 @@ seccion('Boorus NSFW')
     mal('/r34 puede volver a elegir al azar de un bloque sin ordenar')
   }
 
-  // Los cuatro normalizadores tienen que traer ancho/alto/bytes: sin eso
+  // Los normalizadores tienen que traer ancho/alto/bytes: sin eso
   // calidadDeMedia solo ve el score y elige a ciegas.
   const conMedidas =
     (fuente.match(/ancho: Number/g) || []).length >= 4 && (fuente.match(/bytes: Number/g) || []).length >= 3
   if (conMedidas) {
-    ok('los posts traen ancho, alto y peso de las cuatro fuentes')
+    ok('los posts traen ancho, alto y peso de todas las fuentes')
   } else {
     mal('hay normalizadores sin dimensiones y la seleccion elige a ciegas')
+  }
+
+  // Una sola fuente son 50 posts y la seleccion devolvia siempre los mismos
+  // seis: la busqueda tiene que juntar varias fuentes (barajadas) y pedir mas
+  // de una pagina por fuente.
+  const fuentes = nsfw.NOMBRES_FUENTES || []
+  const junta =
+    fuentes.length >= 6 &&
+    ['tbib.org', 'hypnohub.net', 'danbooru.donmai.us'].every((f) => fuentes.includes(f)) &&
+    /elegirFuentes\(/.test(fuente) &&
+    /barajar\(FUENTES\)/.test(fuente) &&
+    /Promise\.all\(seleccion\.map/.test(fuente) &&
+    /PAGINAS_POR_FUENTE = 2/.test(fuente)
+  if (junta) {
+    ok('/r34 junta varias fuentes en paralelo y pide dos paginas por fuente')
+  } else {
+    mal('/r34 puede volver a depender de una sola fuente y repetir el bloque', fuentes.join(', '))
+  }
+
+  // El mismo arte vive espejado en tbib, danbooru y hypnohub con ids distintos:
+  // si la memoria mira solo el id, se manda dos veces como si fuera otra imagen.
+  const claveHash = 'prueba:hash'
+  const hashCompartido = 'a'.repeat(32)
+  nsfw.marcarVisto(claveHash, 1, hashCompartido)
+  const trasEnvio = nsfw.sinRepetir(claveHash, [
+    { id: 2, hash: hashCompartido },
+    { id: 3, hash: 'b'.repeat(32) },
+  ])
+  if (trasEnvio.length === 1 && trasEnvio[0].id === 3) {
+    ok('la memoria de /r34 reconoce el mismo archivo espejado en otro booru')
+  } else {
+    mal('el mismo archivo espejado con otro id pasaria como imagen nueva', JSON.stringify(trasEnvio.map((p) => p.id)))
   }
 }
 

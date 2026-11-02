@@ -110,15 +110,18 @@ export async function ejecutarBusqueda({ sock, jid, msg, args, sender }, { azar 
     // Calidad primero: se ordenan los posts por lado corto y score, y se
     // mandan los mejores. Antes salia un post al azar del bloque, que muchas
     // veces era un boceto viejo o una imagen de 500 px borrosa en WhatsApp.
-    // Se descartan los que ya se mandaron en este chat con esta misma busqueda,
-    // asi dos `/r34 burnice` no repiten imagen.
+    // Se descartan los que ya se mandaron en este chat con esta misma busqueda
+    // (por id y por hash del archivo, que es lo que repite entre espejos),
+    // asi dos `/r34 burnice` no caen en la misma imagen.
     const claveVistos = `${jid}|${consulta.toLowerCase() || 'azar'}`
     const recibibles = sinRepetir(
       claveVistos,
       postRecibibles(resultado.posts, { permitirVideo: true }),
     )
-    // Hasta 6 buenos al azar entre los mejores: variedad sin bajar la calidad
-    const lista = barajar(mejoresPosts(recibibles, { cantidad: 6 }))
+    // Hasta 24 buenos al azar entre los mejores: el pool ahora son varias
+    // fuentes y dos paginas cada una, asi que hay de donde elegir sin bajar
+    // la calidad. Con 6 el top se agotaba enseguida y volvia lo mismo.
+    const lista = barajar(mejoresPosts(recibibles, { cantidad: 24 }))
     // Respaldo: el resto del bloque, por si todos los buenos fallan al bajar
     const resto = barajar(recibibles.filter((p) => !lista.includes(p)))
 
@@ -183,7 +186,7 @@ export async function ejecutarBusqueda({ sock, jid, msg, args, sender }, { azar 
 
     // Anota el post como enviado en este chat: la proxima busqueda igual
     // lo descarta y manda otra imagen
-    marcarVisto(claveVistos, post.id)
+    marcarVisto(claveVistos, post.id, post.hash)
 
     // La recarga se gasta solo si la entrega salio completa
     marcarUso(quien, CLAVE_RECARGA)

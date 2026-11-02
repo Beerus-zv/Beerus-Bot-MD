@@ -797,7 +797,7 @@ Resumen por categoría. El listado real y actualizado sale siempre de `/menu`.
 | 📖 Perfiles | 20 | `profile` `level` `marry` `divorce` `birthdays` `setbirth` |
 | 🤖 IA | 3 | `ia` `chatgpt` `gemini` |
 | 💞 Interacciones | 31 | `kiss` `hug` `slap` `pat` `dance` `cuddle` |
-| 🔞 NSFW *(off por defecto)* | 33 | `/nsfw on` para habilitar · `/r34` ordena por score y descarta lo que baja de 500 px |
+| 🔞 NSFW *(off por defecto)* | 33 | `/nsfw on` para habilitar · `/r34` junta 3 boorus, 2 páginas cada uno, y no repite lo ya enviado |
 
 ---
 

@@ -51,8 +51,9 @@ const MAX_VIDEO = 6 * 1024 * 1024
  * Boorus que sirven GIF/MP4 de verdad. yande.re y konachan casi no tienen
  * animados, y la cadena por defecto empieza por yande.re: por eso las
  * interacciones salian en imagen fija aunque el tag tuviera animacion.
+ * tbib es espejo de danbooru, asi que tambien trae los gifs.
  */
-const FUENTES_ANIMADAS = ['gelbooru.com', 'e621.net', 'danbooru.donmai.us']
+const FUENTES_ANIMADAS = ['gelbooru.com', 'e621.net', 'danbooru.donmai.us', 'tbib.org']
 
 /** Un "video" de menos de esto es un archivo cortado, no una animacion */
 const MIN_VIDEO = 100 * 1024
