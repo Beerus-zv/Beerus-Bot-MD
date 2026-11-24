@@ -16,18 +16,52 @@ _Busca imágenes o baja un pin (vídeo o imagen) por su enlace._`
 
 const MAX_POR_BUSQUEDA = 4
 
-/** Saca la mejor url de imagen de un HTML de pin */
+/**
+ * Id numérico del pin a partir de cualquier forma del enlace.
+ *
+ * `pin.it` redirige a `/pin/<id>/sent/?invite_code=...`, y esa página de
+ * "enviado" no trae la imagen: hay que quedarse con el id y pedir la ficha
+ * canónica.
+ */
+function idDePin(texto) {
+  const m = String(texto || '').match(/\/pin\/(\d{5,})/)
+  return m ? m[1] : null
+}
+
+/** Enlace canónico del pin */
+function enlaceCanonico(id) {
+  return `https://www.pinterest.com/pin/${id}/`
+}
+
+/**
+ * Saca la url de imagen del HTML de un pin.
+ *
+ * El patrón viejo (`"orig":{...}` y `og:image`) ya no aparece: la web actual
+ * sirve el JSON del pin con las urls entre comillas. Se exige que la url
+ * termine en extensión de imagen para no caer en `background-origin`, que
+ * también contiene "i.pinimg.com/originals" dentro del CSS.
+ */
 function urlDePin(html) {
-  const candidatos = [
-    ...[...html.matchAll(/"orig"\s*:\s*\{[^}]*"url"\s*:\s*"(https:[^"]+i\.pinimg\.com\/originals[^"]+)"/g)].map((m) => m[1]),
-    ...[...html.matchAll(/property="og:image"\s+content="([^"]+)"/g)].map((m) => m[1]),
-    ...[...html.matchAll(/"imageLarge"\s*:\s*\{[^}]*"data"\s*:\s*\[?"([^"]+)"/g)].map((m) => m[1]),
+  const patrones = [
+    /"orig"\s*:\s*\{\s*"url"\s*:\s*"(https:[^"]+)"/,
+    /"(https:\/\/i\.pinimg\.com\/originals\/[^"]+\.(?:jpg|jpeg|png|webp|gif))"/i,
+    /"(https:\/\/i\.pinimg\.com\/736x\/[^"]+\.(?:jpg|jpeg|png|webp|gif))"/i,
+    /property="og:image"\s+content="([^"]+)"/,
+    /<meta[^>]*property="og:image"[^>]*content="([^"]+)"/,
   ]
-  for (const url of candidatos) {
-    const limpia = url.replace(/\\u002F/g, '/').replace(/\\\//g, '/')
-    if (/i\.pinimg\.com/.test(limpia)) return limpia
+  for (const patron of patrones) {
+    const m = html.match(patron)
+    if (!m) continue
+    const limpia = m[1].replace(/\\u002F/gi, '/').replace(/\\\//g, '/')
+    if (/i\.pinimg\.com/.test(limpia) && /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(limpia)) return limpia
   }
   return null
+}
+
+/** Url del mp4 cuando el pin es un video */
+function videoDePin(html) {
+  const m = html.match(/"(https:\/\/v1\.pinimg\.com\/videos\/[^"]+\.mp4[^"]*)"/i)
+  return m ? m[1].replace(/\\u002F/gi, '/') : null
 }
 
 /** Bajada de imagen con user-agent de navegador */
@@ -40,31 +74,61 @@ async function bajarImagen(url) {
   return Buffer.from(await res.arrayBuffer())
 }
 
-/** Descarga un pin puntual: primero yt-dlp (videos), luego scrape de imagen */
+/** Descarga un pin puntual: primero yt-dlp (videos), luego scrape de la ficha */
 async function pinPorEnlace(sock, jid, msg, url) {
+  const id = idDePin(url)
+
   try {
     const resultado = await descargarContenido(url, { maxMB: 50 })
     const tipo = await enviarDescarga(sock, jid, msg, resultado)
     console.log(`[pinterest] pin -> ${tipo} (${(resultado.bytes / 1048576).toFixed(1)} MB)`)
     return
   } catch (err) {
-    console.warn('[pinterest] yt-dlp fallo, pruebo con og:image:', err.message)
+    console.warn('[pinterest] yt-dlp fallo, pruebo con el HTML del pin:', err.message)
   }
 
-  const res = await fetch(url, {
-    headers: { 'User-Agent': UA, Accept: 'text/html' },
+  // La ficha canónica: /pin/<id>/ y no la de "enviado" del enlace corto
+  const objetivo = id ? enlaceCanonico(id) : url
+  const res = await fetch(objetivo, {
+    headers: { 'User-Agent': UA, Accept: 'text/html', 'Accept-Language': 'es-ES,es;q=0.9' },
+    redirect: 'follow',
     signal: AbortSignal.timeout(60000),
   })
   if (!res.ok) throw new Error(`La página del pin devolvió HTTP ${res.status}`)
   const html = await res.text()
+
+  // Pin de video: se manda el mp4, que es lo que la gente espera ver
+  const video = videoDePin(html)
+  if (video) {
+    const mp4 = await bajarImagen(video)
+    await sock.sendMessage(
+      jid,
+      {
+        video: mp4,
+        mimetype: 'video/mp4',
+        caption: `📌 *Pinterest* · video (${(mp4.length / 1048576).toFixed(1)} MB)`,
+      },
+      { quoted: msg }
+    )
+    console.log(`[pinterest] pin -> video (${(mp4.length / 1048576).toFixed(1)} MB)`)
+    return
+  }
+
   const imagen = urlDePin(html)
-  if (!imagen) throw new Error('no encontré la imagen del pin (o es un tablero, no un pin)')
+  if (!imagen) {
+    if (!id) throw new Error('ese enlace no es un pin (puede ser un tablero o un perfil)')
+    throw new Error('el pin no publica una imagen')
+  }
 
   const buffer = await bajarImagen(imagen)
-  await sock.sendMessage(jid, {
-    image: buffer,
-    caption: `📌 *Pinterest* · ${(buffer.length / 1048576).toFixed(1)} MB`,
-  }, { quoted: msg })
+  await sock.sendMessage(
+    jid,
+    {
+      image: buffer,
+      caption: `📌 *Pinterest* · ${(buffer.length / 1048576).toFixed(1)} MB`,
+    },
+    { quoted: msg }
+  )
   console.log(`[pinterest] pin -> imagen (${(buffer.length / 1048576).toFixed(1)} MB)`)
 }
 
