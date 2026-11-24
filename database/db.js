@@ -52,6 +52,9 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS nsfw (chat TEXT PRIMARY KEY, activo INTEGER NOT NULL DEFAULT 0);
   CREATE TABLE IF NOT EXISTS modos_chat (chat TEXT NOT NULL, modo TEXT NOT NULL, activo INTEGER NOT NULL DEFAULT 0, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')), PRIMARY KEY (chat, modo));
   CREATE TABLE IF NOT EXISTS palabras_prohibidas (chat TEXT NOT NULL, palabra TEXT NOT NULL, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')), PRIMARY KEY (chat, palabra));
+  CREATE TABLE IF NOT EXISTS rpg_perfil (jid TEXT PRIMARY KEY, clase TEXT NOT NULL DEFAULT 'guerrero', hp INTEGER NOT NULL DEFAULT 100, hp_max INTEGER NOT NULL DEFAULT 100, ataque INTEGER NOT NULL DEFAULT 10, defensa INTEGER NOT NULL DEFAULT 5, nivel INTEGER NOT NULL DEFAULT 1, xp INTEGER NOT NULL DEFAULT 0, creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime')));
+  CREATE TABLE IF NOT EXISTS rpg_inventario (jid TEXT NOT NULL, item TEXT NOT NULL, cantidad INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (jid, item));
+  CREATE TABLE IF NOT EXISTS rpg_cofres (jid TEXT NOT NULL, caja TEXT NOT NULL, ultimo TEXT NOT NULL DEFAULT (datetime('now','localtime')), PRIMARY KEY (jid, caja));
 `)
 
 try { db.exec('ALTER TABLE gacha_stats ADD COLUMN ultimo_roll TEXT') } catch {}
@@ -1003,4 +1006,59 @@ export function borrarPersonajeGacha(id) { db.prepare('DELETE FROM gacha_persona
 export function estadoPersonaje(id) {
   const claim = db.prepare('SELECT jid FROM gacha_claims WHERE personaje_id = ? LIMIT 1').get(id)
   return { dueno: claim?.jid ?? null }
+}
+
+// ───────────── RPG: perfil, inventario y cofres ─────────────
+
+/** Perfil de rol; se crea con los valores base si no existe */
+export function obtenerRpg(jid) {
+  let fila = db.prepare('SELECT * FROM rpg_perfil WHERE jid = ?').get(jid)
+  if (!fila) {
+    db.prepare('INSERT INTO rpg_perfil (jid) VALUES (?)').run(jid)
+    fila = db.prepare('SELECT * FROM rpg_perfil WHERE jid = ?').get(jid)
+  }
+  return fila
+}
+
+/** Guarda los campos que cambian (hp, nivel, xp, ataque, defensa, clase) */
+export function guardarRpg(jid, campos) {
+  obtenerRpg(jid)
+  const permitidos = ['clase', 'hp', 'hp_max', 'ataque', 'defensa', 'nivel', 'xp']
+  for (const [campo, valor] of Object.entries(campos || {})) {
+    if (!permitidos.includes(campo)) continue
+    db.prepare(`UPDATE rpg_perfil SET ${campo} = ? WHERE jid = ?`).run(valor, jid)
+  }
+  return obtenerRpg(jid)
+}
+
+/** Suma items al inventario */
+export function darItem(jid, item, cantidad = 1) {
+  db.prepare('INSERT INTO rpg_inventario (jid, item, cantidad) VALUES (?, ?, ?) ON CONFLICT(jid, item) DO UPDATE SET cantidad = cantidad + excluded.cantidad').run(jid, item, cantidad)
+  return cantidadDeItem(jid, item)
+}
+
+/** Quita items; false si no habia suficientes */
+export function quitarItem(jid, item, cantidad = 1) {
+  const actual = cantidadDeItem(jid, item)
+  if (actual < cantidad) return false
+  if (actual === cantidad) db.prepare('DELETE FROM rpg_inventario WHERE jid = ? AND item = ?').run(jid, item)
+  else db.prepare('UPDATE rpg_inventario SET cantidad = cantidad - ? WHERE jid = ? AND item = ?').run(cantidad, jid, item)
+  return true
+}
+
+export function cantidadDeItem(jid, item) {
+  return Number(db.prepare('SELECT cantidad FROM rpg_inventario WHERE jid = ? AND item = ?').get(jid, item)?.cantidad ?? 0)
+}
+
+export function listarInventario(jid) {
+  return db.prepare('SELECT item, cantidad FROM rpg_inventario WHERE jid = ? AND cantidad > 0 ORDER BY item').all(jid)
+}
+
+/** Ultima vez que abrio una caja ('diaria', 'semanal', 'mensual', 'cofre') */
+export function ultimoCofre(jid, caja) {
+  return db.prepare('SELECT ultimo FROM rpg_cofres WHERE jid = ? AND caja = ?').get(jid, caja)?.ultimo ?? null
+}
+
+export function marcarCofre(jid, caja) {
+  db.prepare("INSERT INTO rpg_cofres (jid, caja, ultimo) VALUES (?, ?, datetime('now','localtime')) ON CONFLICT(jid, caja) DO UPDATE SET ultimo = excluded.ultimo").run(jid, caja)
 }

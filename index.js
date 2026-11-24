@@ -226,6 +226,12 @@ const xvideosCmd = fabricarVideoNSFW('xvideos')
 const xnxxCmd = fabricarVideoNSFW('xnxx')
 const r34vidCmd = fabricarVideoNSFW('rule34video')
 
+// RPG de economia y recompensas por tiempo (commands/recompensas.js)
+const fabricarPremio = (caja) =>
+  perezoso(async () => (await import('./commands/recompensas.js')).fabricarRecompensa(caja))
+const weeklyCmd = fabricarPremio('weekly')
+const monthlyCmd = fabricarPremio('monthly')
+
 /** Crea un alias que ejecuta un subcomando de economy */
 const conSub = (fn, sub) => (ctx) => fn({ ...ctx, args: [sub, ...(ctx.args || [])] })
 
@@ -432,6 +438,42 @@ const commands = {
   xnxx: xnxxCmd,
   r34vid: r34vidCmd,
   nsfwvideo: C['nsfw-video'],
+  // ── RPG de economia ──
+  rpg: C.rpg,
+  hunt: conSub(C.rpg, 'hunt'),
+  cazar: conSub(C.rpg, 'hunt'),
+  mine: conSub(C.rpg, 'mine'),
+  minar: conSub(C.rpg, 'mine'),
+  fish: conSub(C.rpg, 'fish'),
+  pescar: conSub(C.rpg, 'fish'),
+  adventure: conSub(C.rpg, 'adventure'),
+  aventura: conSub(C.rpg, 'adventure'),
+  dungeon: conSub(C.rpg, 'dungeon'),
+  mazmorra: conSub(C.rpg, 'dungeon'),
+  cofre: conSub(C.rpg, 'cofre'),
+  heal: conSub(C.rpg, 'heal'),
+  curar: conSub(C.rpg, 'heal'),
+  ritual: conSub(C.rpg, 'ritual'),
+  shop: conSub(C.rpg, 'shop'),
+  tienda: conSub(C.rpg, 'shop'),
+  inventory: conSub(C.rpg, 'inventory'),
+  inventario: conSub(C.rpg, 'inventory'),
+  equip: conSub(C.rpg, 'equip'),
+  equipar: conSub(C.rpg, 'equip'),
+  // ── Juegos de economia ──
+  math: C.math,
+  matematicas: C.math,
+  ppt: C.ppt,
+  piedrapapeltijera: C.ppt,
+  // ── Recompensas y banco ──
+  recompensas: C.recompensas,
+  weekly: weeklyCmd,
+  semanal: weeklyCmd,
+  monthly: monthlyCmd,
+  mensual: monthlyCmd,
+  paybank: C.paybank,
+  pagarbanco: C.paybank,
+  slut: C.slut,
   'nsfw-interaccion': C['nsfw-interaccion'],
   // Acciones NSFW con mencion
   anal,
