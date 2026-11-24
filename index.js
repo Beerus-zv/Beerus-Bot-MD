@@ -266,6 +266,7 @@ const commands = {
   audio: C.audio,
   sticker: C.sticker,
   stickervideo: C.stickervideo,
+  stickeraudio: C.stickeraudio,
   antilink: C.antilink,
   // ── Economía y entretenimiento ──
   gacha: C.gacha,
@@ -561,6 +562,7 @@ const commands = {
   m: C.menu,
   s: C.sticker,
   sv: C.stickervideo,
+  sa: C.stickeraudio,
   d: C.descargar,
   tr: C.traducir,
   vip: C.vip,
@@ -605,6 +607,8 @@ const commands = {
   // ── Alias del nombre corto que se muestra en el menu ──
   stk: C.stickers,
   svideo: C.stickervideo,
+  saudio: C.stickeraudio,
+  stickersonido: C.stickeraudio,
   verdad: C.truthordare,
   elogio: C.compliment,
   liga: C.pickup,
