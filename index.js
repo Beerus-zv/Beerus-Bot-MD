@@ -28,6 +28,8 @@ import { adquirirBloqueo, liberarBloqueo } from './lib/instancia.js'
 import { cargarComandos } from './lib/loader.js'
 import { useSqliteAuthState } from './lib/auth-state.js'
 import { COMANDOS_VIP, esVip, jidsDe } from './lib/vip.js'
+import { prefijosBot, modoPrivado } from './lib/ajustes-bot.js'
+import { registrarSocket, quitarSocket } from './lib/sockets.js'
 
 // ── Tarifa de oro por comando (categorías pagadas) ──
 const COSTE_COMANDO_ORO = 10
@@ -751,6 +753,31 @@ const commands = {
   leido: autoreadModo,
   leidos: autoreadModo,
   marcarleido: autoreadModo,
+  // ── Configuración del socket (solo owner) ──
+  socket: C.socket,
+  bots: conSub(C.socket, 'bots'),
+  sockets: conSub(C.socket, 'sockets'),
+  join: conSub(C.socket, 'join'),
+  unir: conSub(C.socket, 'join'),
+  logout: conSub(C.socket, 'logout'),
+  prefix: conSub(C.socket, 'prefix'),
+  self: conSub(C.socket, 'self'),
+  setbanner: conSub(C.socket, 'setbanner'),
+  setmenubanner: conSub(C.socket, 'setbanner'),
+  setbotcurrency: conSub(C.socket, 'setbotcurrency'),
+  setcurrency: conSub(C.socket, 'setbotcurrency'),
+  setlink: conSub(C.socket, 'setbotlink'),
+  setbotlink: conSub(C.socket, 'setbotlink'),
+  setbotname: conSub(C.socket, 'setbotname'),
+  botname: conSub(C.socket, 'setbotname'),
+  setbotowner: conSub(C.socket, 'setbotowner'),
+  setowner: conSub(C.socket, 'setbotowner'),
+  setbotprefix: conSub(C.socket, 'setbotprefix'),
+  setprefix: conSub(C.socket, 'setbotprefix'),
+  seticon: conSub(C.socket, 'seticon'),
+  setimage: conSub(C.socket, 'setimage'),
+  setpfp: conSub(C.socket, 'setimage'),
+  setusername: conSub(C.socket, 'setusername'),
 }
 
 // ───────────── Utilidades ─────────────
@@ -1079,6 +1106,8 @@ async function startBot() {
     if (connection === 'open') {
       intentosReconexion = 0
       log.sistema(`✅ ${BOT_NAME} conectado correctamente`)
+      // Registro de sockets vivos: lo que muestra `/bots`
+      registrarSocket(sock, { rol: 'principal' })
       // Guardar credenciales inmediatamente para persistir la sesión (evitar volver a preguntar QR/código)
       saveCreds()
       // Precarga los nombres de los grupos para que los logs los muestren
@@ -1112,6 +1141,7 @@ async function startBot() {
     if (connection === 'close') {
       const codigo = lastDisconnect?.error?.output?.statusCode
       log.aviso(`Conexión cerrada (código ${codigo}).`)
+      quitarSocket(sock)
 
       // 401 = la sesión se cerró desde el teléfono: hay que escanear el QR otra vez
       if (codigo === DisconnectReason.loggedOut) {
@@ -1382,9 +1412,12 @@ const userSpamData = {}
           }
         }
 
+        // Prefijos en caliente: `/setbotprefix` los cambia sin reiniciar
+        const prefijosActivos = prefijosBot()
+
         // ── Autoreact: reacciona al azar en los grupos donde se activó con .autoreact on ──
         if (esGrupo && !msg.key.fromMe) {
-          autoReaccionar({ sock, jid, msg, texto, prefijos: PREFIX }).catch((err) =>
+          autoReaccionar({ sock, jid, msg, texto, prefijos: prefijosActivos }).catch((err) =>
             log.aviso(`Autoreact falló: ${err?.message || err}`)
           )
         }
@@ -1394,7 +1427,7 @@ const userSpamData = {}
         }
 
         // Jugada de UNO sin prefijo en el privado: "R6" equivale a ".uno R6"
-        if (!esGrupo && !PREFIX.some((p) => texto.startsWith(p)) && esJugadaUno(texto)) {
+        if (!esGrupo && !prefijosActivos.some((p) => texto.startsWith(p)) && esJugadaUno(texto)) {
           const terminar = log.comando({ nombre: 'uno (jugada)', args: [texto], jid })
           try {
             await C.uno({
@@ -1406,7 +1439,7 @@ const userSpamData = {}
               esGrupo: false,
               commands: C,
               BOT_NAME,
-              PREFIX,
+              PREFIX: prefijosActivos,
               db,
               jugadaSuelta: true,
             })
@@ -1418,12 +1451,19 @@ const userSpamData = {}
           return
         }
 
-        const prefijo = PREFIX.find((p) => texto.startsWith(p))
+        const prefijo = prefijosActivos.find((p) => texto.startsWith(p))
         if (prefijo) {
           const [nombre, ...args] = texto.slice(prefijo.length).trim().split(/\s+/)
           if (!nombre) return
 
           const clave = nombre.toLowerCase()
+
+          // ── Modo privado del bot (`/self on`): los grupos quedan mudos ──
+          // La puerta `/self` sigue abierta para poder apagarlo desde el grupo.
+          if (esGrupo && modoPrivado() && clave !== 'self') {
+            log.ignorado({ nombre: prefijo + clave, jid, motivo: 'modo privado' })
+            return
+          }
 
           // ── Modos por chat (lote Administracion, solo grupos) ──
           if (esGrupo) {
@@ -1496,7 +1536,7 @@ const userSpamData = {}
               esGrupo,
               commands,
               BOT_NAME,
-              PREFIX,
+              PREFIX: prefijosActivos,
               db,
             })
             terminar()
@@ -1539,7 +1579,7 @@ const userSpamData = {}
               esGrupo,
               commands,
               BOT_NAME,
-              PREFIX,
+              PREFIX: prefijosActivos,
               db,
             })
             terminar()

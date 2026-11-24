@@ -22,6 +22,9 @@ import {
 import { obtenerBannerMenu } from '../lib/banners-menu.js'
 import { TEMA, ORNAMENTOS, panelLinea, fechaMenu } from '../lib/tema.js'
 import { obtenerAjuste } from '../database/db.js'
+import { tituloBot, monedaBot, iconoBot, bannerFijado, linkBot } from '../lib/ajustes-bot.js'
+import { readFile } from 'node:fs/promises'
+import { isAbsolute, resolve } from 'node:path'
 
 const LIMITE_WA = 4096
 
@@ -54,6 +57,23 @@ export default async ({ sock, jid, msg, args, commands, PREFIX }) => {
   const tomarBanner = async () => {
     if (bannerListo) return banner
     bannerListo = true
+    // Banner fijado con /setbanner: manda sobre el aleatorio
+    const fijo = bannerFijado()
+    if (fijo) {
+      try {
+        if (/^https?:\/\//i.test(fijo)) {
+          const respuesta = await fetch(fijo, { redirect: 'follow' })
+          if (respuesta.ok) banner = { id: 'fijo', buffer: Buffer.from(await respuesta.arrayBuffer()) }
+        } else {
+          const ruta = isAbsolute(fijo) ? fijo : resolve(fijo)
+          banner = { id: 'fijo', buffer: await readFile(ruta) }
+        }
+      } catch (err) {
+        console.error('No se pudo leer el banner fijado, se usa el aleatorio:', err.message)
+        banner = null
+      }
+      if (banner) return banner
+    }
     try {
       banner = await obtenerBannerMenu()
     } catch (err) {
@@ -70,7 +90,7 @@ export default async ({ sock, jid, msg, args, commands, PREFIX }) => {
 
     if (textoCat) {
       const cuerpo =
-        `> 🐉 *${TEMA.titulo}* ⚡\n\n${textoCat}\n\n` +
+        `> ${iconoBot()} *${tituloBot()}* ⚡\n\n${textoCat}\n\n` +
         `${ORNAMENTOS.separador}\n> ✐ vuelve al indice: \`${prefijo}menu\``
 
       const portada = await tomarBanner()
@@ -114,23 +134,23 @@ export default async ({ sock, jid, msg, args, commands, PREFIX }) => {
     modo: obtenerAjuste('modo') ?? TEMA.modo,
     version: TEMA.version,
     desarrollador: obtenerAjuste('desarrollador') ?? TEMA.desarrollador,
-    moneda: TEMA.moneda,
+    moneda: monedaBot(),
     comandos: `${total} en ${nCategorias} categorias`,
-    link: obtenerAjuste('link') ?? TEMA.link,
+    link: linkBot(),
   }
 
   const panel = panelLinea(datos)
 
   // 3) Menu principal como texto: 1 mensaje si cabe, mas si no
   const cabecera =
-    `> 🐉 *${TEMA.titulo}* ⚡\n` +
+    `> ${iconoBot()} *${tituloBot()}* ⚡\n` +
     `> _${TEMA.subtitulo}_\n` +
     `> ⏰ ${fechaMenu()}\n\n` +
     `${ORNAMENTOS.separador}\n` +
     `${panel}\n` +
     `${ORNAMENTOS.separador}\n\n`
   const pie = `\n\n${ORNAMENTOS.separador}\n_${TEMA.lema}._`
-  const rotulo = `⚡ *${TEMA.nombre}* — índice\n\n`
+  const rotulo = `⚡ *${tituloBot()}* — índice\n\n`
   const hueco = LIMITE_WA - cabecera.length - pie.length - rotulo.length - 4 // margen
 
   const bloques = partir(menuPrincipal(commands, prefijo), hueco)
