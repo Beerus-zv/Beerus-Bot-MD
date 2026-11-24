@@ -5,19 +5,17 @@ import {
   stickerDesdeVideo,
   audioDesdeVideo,
   enviarSticker,
+  enviarStickerConAudio,
 } from '../lib/multimedia.js'
 
 const DURACION_POR_DEFECTO = 6
 const DURACION_MAXIMA = 10
 
 /**
- * Sticker animado con su audio, los dos sacados del mismo video.
+ * Sticker animado con el audio del propio video adentro (StickerMessage
+ * .audioMessage, campo 26): un solo mensaje, sin nota de voz aparte.
  *
  * Uso: responde a un video o GIF con /stickeraudio [segundos]
- *
- * WhatsApp todavia no acepta audio dentro del StickerMessage, asi que el
- * comando manda el par como lo manda la app: el sticker animado y, colgada
- * de el como respuesta, la nota de voz recortada al mismo tramo.
  */
 export default async ({ sock, jid, msg, args }) => {
   const fuente = resolverFuenteMedia(msg)
@@ -73,29 +71,25 @@ export default async ({ sock, jid, msg, args }) => {
     const sticker = stickerRes.value
     const audio = audioRes.status === 'fulfilled' ? audioRes.value : null
 
-    const stickerEnviado = await enviarSticker(sock, jid, sticker, msg)
-
     if (!audio) {
-      await sock.sendMessage(
-        jid,
-        {
-          text: '🔇 El video no trae pista de audio, asi que solo salio el sticker.',
-        },
-        stickerEnviado ? { quoted: stickerEnviado } : undefined
-      )
+      await enviarSticker(sock, jid, sticker, msg)
+      await sock.sendMessage(jid, {
+        text: '🔇 El video no trae pista de audio, asi que salio el sticker solo.',
+      })
       return
     }
 
-    await sock.sendMessage(
-      jid,
-      {
-        audio,
-        mimetype: 'audio/ogg; codecs=opus',
-        ptt: true,
-        seconds: duracion,
-      },
-      stickerEnviado ? { quoted: stickerEnviado } : undefined
-    )
+    try {
+      await enviarStickerConAudio(sock, jid, sticker, audio, { quoted: msg, segundos: duracion })
+    } catch (err) {
+      // El servidor puede rechazar el campo 26 en cuentas sin la funcion
+      // habilitada: mejor el sticker solo que nada.
+      console.error('No se pudo adjuntar el audio al sticker:', err)
+      await enviarSticker(sock, jid, sticker, msg)
+      await sock.sendMessage(jid, {
+        text: '⚠️ WhatsApp rechazo el audio dentro del sticker; salio el sticker solo.',
+      })
+    }
   } catch (err) {
     console.error('Error creando el sticker con audio:', err)
     const mensaje =
