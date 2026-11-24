@@ -80,7 +80,10 @@ export default async ({ sock, jid, msg, args }) => {
     }
 
     try {
-      await enviarStickerConAudio(sock, jid, sticker, audio, { quoted: msg, segundos: duracion })
+      await enviarStickerConAudio(sock, jid, sticker, audio.buffer, {
+        quoted: msg,
+        segundos: audio.segundos,
+      })
     } catch (err) {
       // El servidor puede rechazar el campo 26 en cuentas sin la funcion
       // habilitada: mejor el sticker solo que nada.
