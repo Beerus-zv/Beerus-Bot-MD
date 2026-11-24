@@ -319,6 +319,18 @@ const commands = {
   instagram: C.instagram,
   mediafire: C.mediafire,
   twitter: C.twitter,
+  // ── Descargas: APK, imágenes, Spotify y Drive ──
+  apk: C.apk,
+  aptoide: C.apk,
+  apkdl: C.apk,
+  imagen: C.imagen,
+  img: C.imagen,
+  image: C.imagen,
+  spotify: C.spotifydl,
+  spotifydl: C.spotifydl,
+  spotydl: C.spotifydl,
+  drive: C.descargar,
+  gdrive: C.descargar,
   // ── Lote Neko: descargas ──
   pixiv: C.pixiv,
   pinterest: C.pinterest,
