@@ -14,7 +14,7 @@ import path from 'node:path'
 import qrcode from 'qrcode-terminal'
 
 // ───────────── Base de datos ─────────────
-import { db, contarMensaje, contarMensajeUsuario, alertasActivas, listarAlertas, obtenerAfk, quitarAfk, modoChat, palabraProhibidaEn, registrarAdvertencia, contarAdvertencias, limiteAdvertencias, borrarAdvertencias, alertasAutoActivas, configurarAlertasAuto, setAntiDelete, getAntiDelete, limpiarAntiDelete, obtenerEconomia, restarMonedas } from './database/db.js'
+import { db, contarMensaje, contarMensajeUsuario, alertasActivas, listarAlertas, obtenerAfk, quitarAfk, modoChat, algunModoActivo, palabraProhibidaEn, registrarAdvertencia, contarAdvertencias, limiteAdvertencias, borrarAdvertencias, alertasAutoActivas, configurarAlertasAuto, setAntiDelete, getAntiDelete, limpiarAntiDelete, obtenerEconomia, restarMonedas, primarioDe } from './database/db.js'
 import { obtenerMetadata, esAdmin, esMencionDelBot, extraerComandoTrasMencion, extraerPreguntaTrasMencion, tokenMencion, jidUsuario } from './lib/grupo.js'
 import { log, recordarGrupo, necesitaNombre, intentoNombre } from './lib/logger.js'
 import { autoReaccionar } from './lib/autoreact.js'
@@ -202,6 +202,11 @@ const botModo = fabricarModo('bot')
 const economiaModo = fabricarModo('economia')
 const onlyadmin = fabricarModo('onlyadmin')
 const autoreadModo = fabricarModo('autoread')
+// Modos nuevos del lote Group: rol, juegos, estados y llamadas
+const rpgModo = fabricarModo('rpg')
+const juegosModo = fabricarModo('juegos')
+const antistatusModo = fabricarModo('antistatus')
+const anticallModo = fabricarModo('anticall')
 
 // Busquedas por fuente preferida (rule34.js se carga en el primer uso)
 const danbooru = perezoso(
@@ -778,6 +783,37 @@ const commands = {
   setimage: conSub(C.socket, 'setimage'),
   setpfp: conSub(C.socket, 'setimage'),
   setusername: conSub(C.socket, 'setusername'),
+  // ── Reportes, utilidades y perfil ──
+  report: C.report,
+  reporte: C.report,
+  sug: C.report,
+  suggest: C.report,
+  say: C.say,
+  decir: C.say,
+  jid: C.jid,
+  lid: C.lid,
+  gitclone: C.gitclone,
+  git: C.gitclone,
+  warnlist: C.warnlist,
+  listwarns: C.warnlist,
+  warns: C.warnlist,
+  primary: C.primary,
+  setprimary: C.primary,
+  delprimary: conSub(C.primary, 'del'),
+  setpasatiempo: C.pasatiempo,
+  sethobby: C.pasatiempo,
+  pasatiempo: C.pasatiempo,
+  delpasatiempo: conSub(C.pasatiempo, 'borrar'),
+  removehobby: conSub(C.pasatiempo, 'borrar'),
+  // ── Modos nuevos (rol, juegos, estados y llamadas) ──
+  rpg: rpgModo,
+  game: juegosModo,
+  juegos: juegosModo,
+  juego: juegosModo,
+  antistatus: antistatusModo,
+  antiestados: antistatusModo,
+  anticall: anticallModo,
+  antillamadas: anticallModo,
 }
 
 // ───────────── Utilidades ─────────────
@@ -1198,7 +1234,17 @@ const userSpamData = {}
         if (!msg?.message) return
 
         const jid = msg.key.remoteJid
-        if (jid === 'status@broadcast') return
+
+        // Estados: con /antistatus apagado el bot los marca vistos (así
+        // desaparecen del anillo); con /antistatus activo los deja pasar.
+        if (jid === 'status@broadcast') {
+          if (!algunModoActivo('antistatus') && !msg.key.fromMe) {
+            try {
+              await sock.readMessages([msg.key])
+            } catch {}
+          }
+          return
+        }
 
         // Ignora los mensajes que envió el propio bot (evita bucles)
         if (vieneDelBot(msg)) return
@@ -1465,6 +1511,17 @@ const userSpamData = {}
             return
           }
 
+          // ── Bot primario del grupo: si hay uno fijado y no soy yo, me callo ──
+          if (esGrupo) {
+            const primario = primarioDe(jid)
+            const soyPrimario = !primario || primario === sock.user?.id
+            const esPuertaPrimario = clave === 'primary' || clave === 'setprimary' || clave === 'delprimary'
+            if (!soyPrimario && !esPuertaPrimario) {
+              log.ignorado({ nombre: prefijo + clave, jid, motivo: 'no es el bot primario' })
+              return
+            }
+          }
+
           // ── Modos por chat (lote Administracion, solo grupos) ──
           if (esGrupo) {
             const esPuerta = clave === 'bot' || clave === 'onlyadmin'
@@ -1617,6 +1674,20 @@ const userSpamData = {}
         log.error('Error procesando el mensaje', err)
       }
     })
+  })
+
+  // ── Anticall: rechaza las llamadas si algun chat activo /anticall on ──
+  sock.ev.on('call', async (llamadas) => {
+    if (!algunModoActivo('anticall')) return
+    for (const llamada of llamadas || []) {
+      if (llamada?.status !== 'offer') continue
+      try {
+        await sock.rejectCall(llamada.id, llamada.from)
+        log.sistema(`📵 Llamada rechazada de ${String(llamada.from || '').split('@')[0]}`)
+      } catch (err) {
+        log.aviso(`No se pudo rechazar la llamada: ${err?.message || err}`)
+      }
+    }
   })
 
   // ── Bienvenidas y despedidas en grupos ──

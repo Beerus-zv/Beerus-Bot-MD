@@ -61,6 +61,7 @@ try { db.exec('ALTER TABLE gacha_stats ADD COLUMN pity_alto INTEGER NOT NULL DEF
 try { db.exec('ALTER TABLE economia ADD COLUMN ultimo_robo TEXT') } catch {}
 try { db.exec('ALTER TABLE usuarios ADD COLUMN genero TEXT') } catch {}
 try { db.exec('ALTER TABLE usuarios ADD COLUMN descripcion TEXT') } catch {}
+try { db.exec('ALTER TABLE usuarios ADD COLUMN pasatiempo TEXT') } catch {}
 try { db.exec('ALTER TABLE gacha_personajes ADD COLUMN video TEXT') } catch {}
 try { db.exec('ALTER TABLE gacha_personajes ADD COLUMN favoritos INTEGER') } catch {}
 // Popularidad de la serie y peso del personaje en su reparto: los otros dos
@@ -255,10 +256,11 @@ export function registrarUsuario(jid, nombre = null) {
 }
 export function totalUsuarios() { return Number(db.prepare('SELECT COUNT(*) AS n FROM usuarios').get()?.n ?? 0) }
 export function configurarPerfil(jid, campo, valor) {
-  if (campo !== 'genero' && campo !== 'descripcion') return false
+  if (campo !== 'genero' && campo !== 'descripcion' && campo !== 'pasatiempo') return false
   if (!obtenerUsuario(jid)) registrarUsuario(jid)
   if (campo === 'genero') db.prepare('UPDATE usuarios SET genero = ? WHERE jid = ?').run(valor, jid)
   if (campo === 'descripcion') db.prepare('UPDATE usuarios SET descripcion = ? WHERE jid = ?').run(valor, jid)
+  if (campo === 'pasatiempo') db.prepare('UPDATE usuarios SET pasatiempo = ? WHERE jid = ?').run(valor, jid)
   return obtenerUsuario(jid)
 }
 export function quitarGenero(jid) {
@@ -271,6 +273,12 @@ export function quitarDescripcion(jid) {
   const u = obtenerUsuario(jid)
   if (!u?.descripcion) return false
   db.prepare('UPDATE usuarios SET descripcion = NULL WHERE jid = ?').run(jid)
+  return true
+}
+export function quitarPasatiempo(jid) {
+  const u = obtenerUsuario(jid)
+  if (!u?.pasatiempo) return false
+  db.prepare('UPDATE usuarios SET pasatiempo = NULL WHERE jid = ?').run(jid)
   return true
 }
 
@@ -355,7 +363,7 @@ export function pagarConBanco(jid, monto, tipo = '', motivo = '') {
 }
 
 // Modos
-const MODO_DEFAULT = { bot: 1, economia: 1, gacha: 1, onlyadmin: 0, autoreact: 0, autoread: 1 }
+const MODO_DEFAULT = { bot: 1, economia: 1, gacha: 1, onlyadmin: 0, autoreact: 0, autoread: 1, rpg: 1, juegos: 1, antistatus: 0, anticall: 0 }
 export function modoChat(chat, modo) {
   const fila = db.prepare('SELECT activo FROM modos_chat WHERE chat = ? AND modo = ?').get(chat, modo)
   if (fila) return Boolean(fila.activo)
@@ -363,6 +371,10 @@ export function modoChat(chat, modo) {
 }
 export function configurarModo(chat, modo, activo) {
   db.prepare('INSERT INTO modos_chat (chat, modo, activo) VALUES (?, ?, ?) ON CONFLICT(chat, modo) DO UPDATE SET activo = excluded.activo').run(chat, modo, activo ? 1 : 0)
+}
+/** true si algun chat tiene ese modo activado (para ajustes globales como antistatus) */
+export function algunModoActivo(modo) {
+  return Boolean(db.prepare('SELECT 1 FROM modos_chat WHERE modo = ? AND activo = 1 LIMIT 1').get(modo))
 }
 
 // NSFW
@@ -585,6 +597,23 @@ export function statsTiradas(jid) { return db.prepare('SELECT COUNT(*) AS total 
 
 // Sugerencias
 export function crearSugerencia(jid, texto) { const r = db.prepare('INSERT INTO sugerencias (jid, texto) VALUES (?, ?)').run(jid, texto); return Number(r.lastInsertRowid) }
+export function listarSugerencias(limite = 10) { return db.prepare('SELECT * FROM sugerencias ORDER BY id DESC LIMIT ?').all(limite) }
+export function contarSugerencias() { return Number(db.prepare('SELECT COUNT(*) AS n FROM sugerencias').get()?.n ?? 0) }
+
+// Advertencias por grupo (lista general)
+export function advertenciasPorGrupo(grupo) {
+  return db
+    .prepare(
+      `SELECT jid, COUNT(*) AS total FROM advertencias
+        WHERE grupo = ? GROUP BY jid ORDER BY total DESC, jid ASC`
+    )
+    .all(grupo)
+}
+
+// Bot primario del grupo
+export function primarioDe(grupo) { return obtenerAjuste(`primario:${grupo}`) }
+export function configurarPrimario(grupo, jid) { guardarAjuste(`primario:${grupo}`, String(jid || '')); return jid }
+export function quitarPrimario(grupo) { db.prepare('DELETE FROM ajustes WHERE clave = ?').run(`primario:${grupo}`) }
 
 // Config gacha
 export function obtenerConfigGacha(chat) { let row = db.prepare('SELECT * FROM gacha_config WHERE grupo = ?').get(chat); if (!row) { db.prepare('INSERT INTO gacha_config (grupo) VALUES (?)').run(chat); row = db.prepare('SELECT * FROM gacha_config WHERE grupo = ?').get(chat) }; return row }

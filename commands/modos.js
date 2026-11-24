@@ -21,6 +21,10 @@ const LEYENDAS = {
   onlyadmin: 'el modo solo administradores',
   autoreact: 'las reacciones aleatorias a los mensajes',
   autoread: 'la lectura automática de los mensajes',
+  rpg: 'los comandos de rol (aventura, mazmorra, caza)',
+  juegos: 'los juegos de mesa y apuestas',
+  antistatus: 'no ver los estados automáticamente',
+  anticall: 'rechazar las llamadas entrantes',
 }
 
 const FRASE_OFF = {
@@ -30,6 +34,10 @@ const FRASE_OFF = {
   onlyadmin: 'Solo los admins podrán usar comandos.',
   autoreact: 'Las reacciones aleatorias se pausan.',
   autoread: 'Los mensajes quedarán sin leer (con su contador).',
+  rpg: 'Las aventuras quedan en pausa.',
+  juegos: 'Las mesas se levantan.',
+  antistatus: 'El bot volverá a marcar los estados como vistos.',
+  anticall: 'El bot dejará pasar las llamadas.',
 }
 
 /**
