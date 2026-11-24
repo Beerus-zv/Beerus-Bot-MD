@@ -215,6 +215,16 @@ const danbooru = perezoso(
 const e621 = perezoso(
   async () => (await import('./commands/rule34.js')).fabricarBusquedaNSFW('e621.net')
 )
+const gelbooru = perezoso(
+  async () => (await import('./commands/rule34.js')).fabricarBusquedaNSFW('gelbooru.com')
+)
+
+// Videos NSFW: un handler por sitio (lib/nsfw-video.js trae el motor)
+const fabricarVideoNSFW = (sitio) =>
+  perezoso(async () => (await import('./commands/nsfw-video.js')).fabricarComandoVideo(sitio))
+const xvideosCmd = fabricarVideoNSFW('xvideos')
+const xnxxCmd = fabricarVideoNSFW('xnxx')
+const r34vidCmd = fabricarVideoNSFW('rule34video')
 
 /** Crea un alias que ejecuta un subcomando de economy */
 const conSub = (fn, sub) => (ctx) => fn({ ...ctx, args: [sub, ...(ctx.args || [])] })
@@ -417,6 +427,11 @@ const commands = {
   hentai: C.hentai,
   danbooru,
   e621,
+  gelbooru,
+  xvideos: xvideosCmd,
+  xnxx: xnxxCmd,
+  r34vid: r34vidCmd,
+  nsfwvideo: C['nsfw-video'],
   'nsfw-interaccion': C['nsfw-interaccion'],
   // Acciones NSFW con mencion
   anal,
