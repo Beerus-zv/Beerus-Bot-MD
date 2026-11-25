@@ -12,6 +12,12 @@ Bot de WhatsApp multi-dispositivo escrito sobre Baileys, con sesión y datos en 
 ![Forks](https://img.shields.io/github/forks/Beerus-zv/Beerus-Bot-MD?style=social)
 ![Visitas](https://komarev.com/ghpvc/?username=Beerus-zv&label=Visitas&color=FF4D6D&style=for-the-badge)
 
+<div align="center">
+
+<img src="https://readme-typing-svg.herokuapp.com?font=Orbitron&weight=900&size=22&pause=800&color=FF4D6D&center=true&vCenter=true&width=780&lines=🐱+Bot+de+WhatsApp+multi-dispositivo+con+Baileys;⚡+177+comandos+•+Gacha+anime+•+Poker+•+UNO;🤖+IA+de+Beerus+sin+clave+de+API;🛡️+Moderación+•+Economía+•+Descargas" alt="Typing SVG" />
+
+</div>
+
 ## En números
 
 | Dato | Valor |
@@ -24,6 +30,12 @@ Bot de WhatsApp multi-dispositivo escrito sobre Baileys, con sesión y datos en 
 | Licencia | MIT |
 
 ## Qué es
+
+<div align="center">
+
+<img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&weight=700&size=18&pause=1000&color=FF4D6D&center=true&vCenter=true&width=700&lines=Bot+multi-dispositivo+sobre+Baileys;Sin+navegador+•+Sin+Puppeteer+•+Solo+el+protocolo;177+comandos+•+18+categorías+•+SQLite" alt="Que es" />
+
+</div>
 
 Se conecta a WhatsApp como un dispositivo vinculado más, usando `@whiskeysockets/baileys` y nada de automatización de navegador. No levanta Chromium, no gasta 800 MB de RAM en un navegador y no se rompe cuando WhatsApp cambia el DOM.
 
@@ -104,6 +116,12 @@ Por dentro hay tres piezas: un enrutador de mensajes, un registro de comandos y 
 `/code` vincula un número como bot propio. Cada sub-bot abre su sesión en `data/subbots/<numero>/`, con su reconexión y su límite de mensajes de WhatsApp, y responde a los mismos comandos. Los sub-bots guardados vuelven solos al reiniciar. `/code list` los muestra y `/code del <numero>` borra uno.
 
 ## IA de Beerus
+
+<div align="center">
+
+<img src="https://readme-typing-svg.herokuapp.com?font=Orbitron&weight=900&size=24&pause=1000&color=FF4D6D&center=true&vCenter=true&width=700&lines=🤖+IA+DE+BEERUS;🐱+El+Dios+de+la+Destrucción+en+tu+grupo;⚡+Sin+clave+de+API+•+Memoria+por+chat" alt="IA" />
+
+</div>
 
 Personalidad de Beerus: soberbio, perezoso, fanático del pudín. Responde en el idioma del chat y en formato WhatsApp, con memoria por chat.
 
