@@ -14,7 +14,8 @@
     "banners": "node scripts/renovar-banners.mjs",
     "rarezas": "node scripts/sincronizar-rarezas.mjs",
     "graphify": "node scripts/graphify.mjs",
-    "postinstall": "node scripts/parche-baileys.mjs"
+    "postinstall": "node scripts/parche-baileys.mjs",
+    "diag": "node --disable-warning=ExperimentalWarning scripts/diagnostico-vinculacion.mjs"
   },
   "keywords": [
     "whatsapp",
