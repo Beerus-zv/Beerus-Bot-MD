@@ -433,8 +433,15 @@ export function dominiosPermitidos(grupo) {
 }
 export function configurarAntilink(jid, config = {}) {
   const actual = obtenerAntilink(jid) || {}
-  db.prepare('INSERT INTO antilink (chat, activo, accion, whitelist) VALUES (?, ?, ?, ?) ON CONFLICT(chat) DO UPDATE SET activo = excluded.activo, accion = excluded.accion, whitelist = excluded.whitelist').run(jid, config.activo ?? actual.activo ?? 0, config.accion ?? actual.accion ?? 'kick', config.whitelist ?? actual.whitelist ?? '')
-  return { activo: config.activo ?? actual.activo ?? 0, accion: config.accion ?? actual.accion ?? 'kick', whitelist: config.whitelist ?? actual.whitelist ?? '' }
+  // node:sqlite no acepta booleanos ni arreglos como parametros: `true` y `[]`
+  // revientan con "cannot be bound to SQLite parameter". Se guardan 0/1 y la
+  // lista como texto separado por comas, igual que el resto de la base.
+  const activo = config.activo ?? actual.activo ?? 0
+  const accion = config.accion ?? actual.accion ?? 'kick'
+  const bruto = config.whitelist ?? actual.whitelist ?? ''
+  const whitelist = Array.isArray(bruto) ? bruto.join(',') : String(bruto)
+  db.prepare('INSERT INTO antilink (chat, activo, accion, whitelist) VALUES (?, ?, ?, ?) ON CONFLICT(chat) DO UPDATE SET activo = excluded.activo, accion = excluded.accion, whitelist = excluded.whitelist').run(jid, activo ? 1 : 0, String(accion), whitelist)
+  return { activo: activo ? 1 : 0, accion: String(accion), whitelist }
 }
 
 // AFK
