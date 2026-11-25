@@ -29,8 +29,9 @@ import { adquirirBloqueo, liberarBloqueo } from './lib/instancia.js'
 import { cargarComandos } from './lib/loader.js'
 import { useSqliteAuthState } from './lib/auth-state.js'
 import { COMANDOS_VIP, esVip, jidsDe } from './lib/vip.js'
-import { prefijosBot, modoPrivado } from './lib/ajustes-bot.js'
+import { prefijosBot, modoPrivado, nombreBot } from './lib/ajustes-bot.js'
 import { registrarSocket, quitarSocket } from './lib/sockets.js'
+import { configurarSubBots, restaurarSubBots } from './lib/subbot.js'
 
 // ── Tarifa de oro por comando (categorías pagadas) ──
 const COSTE_COMANDO_ORO = 10
@@ -834,6 +835,12 @@ const commands = {
   // ── Configuración del socket (solo owner) ──
   socket: C.socket,
   bots: conSub(C.socket, 'bots'),
+  // Sub-bots: sesiones vinculadas desde el chat con /serbot
+  serbot: C.serbot,
+  subbot: C.serbot,
+  subbots: C.serbot,
+  misbots: C.serbot,
+  delbot: C.serbot,
   sockets: conSub(C.socket, 'sockets'),
   join: conSub(C.socket, 'join'),
   unir: conSub(C.socket, 'join'),
@@ -1217,6 +1224,17 @@ async function startBot() {
       log.sistema(`✅ ${BOT_NAME} conectado correctamente`)
       // Registro de sockets vivos: lo que muestra `/bots`
       registrarSocket(sock, { rol: 'principal' })
+      // Sub-bots: comparten el registro de comandos y vuelven solos al
+      // reiniciar. Se configuran aqui porque necesitan `commands` ya cargado.
+      configurarSubBots({
+        commands,
+        db,
+        nombre: nombreBot(),
+        prefijos: prefijosBot,
+      })
+      restaurarSubBots().catch((err) =>
+        log.aviso(`Sub-bots: no se pudieron restaurar: ${err?.message || err}`)
+      )
       // Guardar credenciales inmediatamente para persistir la sesión (evitar volver a preguntar QR/código)
       saveCreds()
       // Precarga los nombres de los grupos para que los logs los muestren
