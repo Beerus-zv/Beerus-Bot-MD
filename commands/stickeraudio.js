@@ -32,8 +32,9 @@ function conLimite(promesa, ms, etiqueta) {
 }
 
 /**
- * Sticker animado con el audio del propio video adentro (StickerMessage
- * .audioMessage, campo 26): un solo mensaje, sin nota de voz aparte.
+ * Sticker animado con el audio del propio video, en dos mensajes: el sticker
+ * y su nota de voz citándolo. WhatsApp no admite un sticker con audio adentro
+ * en el mismo `Message`, así que van seguidos.
  *
  * Uso:
  *   responde a un video o GIF con /stickeraudio [segundos]
@@ -158,12 +159,12 @@ async function manejar({ sock, jid, msg, args }) {
       segundos: audio.segundos,
     })
   } catch (err) {
-    // El servidor puede rechazar el campo 26 en cuentas sin la funcion
-    // habilitada: mejor el sticker solo que nada.
-    console.error('No se pudo adjuntar el audio al sticker:', err)
-    await enviarSticker(sock, jid, sticker, msg)
+    // El servidor puede rechazar el audio: mejor el sticker solo que nada.
+    // Si el sticker ya salio, no se repite.
+    console.error('No se pudo enviar el audio del sticker:', err)
+    if (!err?.stickerEnviado) await enviarSticker(sock, jid, sticker, msg)
     await sock.sendMessage(jid, {
-      text: '⚠️ WhatsApp rechazo el audio dentro del sticker; salio el sticker solo.',
+      text: '⚠️ El audio no salió; el sticker sí.',
     })
   }
 }
@@ -220,9 +221,9 @@ async function rehacerStickerConAudio({ sock, jid, msg, fuente }) {
       segundos: segundos ?? undefined,
     })
   } catch (err) {
-    console.error('[stickeraudio] no se pudo adjuntar el audio al sticker:', err)
-    await enviarSticker(sock, jid, buffer, msg)
-    await responder('⚠️ WhatsApp rechazó el audio dentro del sticker; salió con la firma nueva.')
+    console.error('[stickeraudio] no se pudo enviar el audio del sticker:', err)
+    if (!err?.stickerEnviado) await enviarSticker(sock, jid, buffer, msg)
+    await responder('⚠️ El audio no salió; el sticker sí, con la firma nueva.')
     return
   }
 
