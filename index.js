@@ -1167,6 +1167,18 @@ async function startBot() {
   // Guardar credenciales cada vez que cambien
   sock.ev.on('creds.update', saveCreds)
 
+  // Traza del emparejamiento. En Baileys 7 `creds.registered` nunca pasa a
+  // true: la marca de que la vinculacion se completo es `creds.account`, y
+  // `creds.me` la pone tanto el emparejamiento como una peticion de codigo.
+  // Sin esta linea, un 515 en bucle no dice si el dispositivo quedo vinculado.
+  sock.ev.on('creds.update', (update) => {
+    const marcas = []
+    if (update?.me) marcas.push('me')
+    if (update?.account) marcas.push('account')
+    if (update?.signalIdentities) marcas.push('signalIdentities')
+    if (marcas.length) log.sistema(`Credenciales: ${marcas.join(' + ')}`)
+  })
+
   // Registro los mensajes que envía el bot (protección anti-bucle)
   const enviarOriginal = sock.sendMessage.bind(sock)
   sock.sendMessage = async (destino, contenido, opciones) => {
@@ -1297,7 +1309,14 @@ async function startBot() {
 
       // 515 = el servidor pide reiniciar la conexión (no es un error real)
       if (codigo === DisconnectReason.restartRequired) {
+        const creds = sock.authState.creds
         log.aviso('El servidor pidió reiniciar la conexión...')
+        log.aviso(
+          `Estado de la sesión: me=${Boolean(creds.me)} account=${Boolean(creds.account)}`
+        )
+        // Si el dispositivo quedó vinculado, guardarlo antes de reconectar:
+        // el socket nuevo decide con esto si entra o vuelve a pedir QR.
+        saveCreds().catch(() => {})
         programarReconexion(1000)
         return
       }
