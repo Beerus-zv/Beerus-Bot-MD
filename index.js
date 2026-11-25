@@ -1211,7 +1211,22 @@ async function startBot() {
 
   sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
     if (qr) {
-      if (vinculacion?.metodo === 'codigo' && !sock.authState.creds.registered) {
+      // Un QR en un socket que ya tenia la vinculacion completa (`account`)
+      // significa que el servidor no reconoce este dispositivo: el telefono
+      // rechazo la vinculacion (limite de 4 dispositivos, o el dispositivo se
+      // quito). Sin limpiar lo local, el bucle se repite para siempre.
+      if (sock.authState.creds.account) {
+        log.aviso('WhatsApp no reconoce este dispositivo: se limpia la sesion guardada.')
+        log.aviso('Revisa Dispositivos vinculados en el telefono (maximo 4) y borra los viejos.')
+        for (const clave of ['me', 'account', 'signalIdentities', 'platform']) {
+          delete sock.authState.creds[clave]
+        }
+        saveCreds().catch(() => {})
+        cerrarSocket(sock)
+        return
+      }
+
+      if (vinculacion?.metodo === 'codigo') {
         // El primer evento qr indica que el socket está listo para pedir el código
         if (!codigoSolicitado) {
           codigoSolicitado = true
