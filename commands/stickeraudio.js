@@ -124,6 +124,17 @@ async function manejar({ sock, jid, msg, args }) {
 
   log.depuracion(`stickeraudio · video recibido (${(buffer.length / 1024).toFixed(0)} KB)`)
 
+  // El sticker y el audio son dos codificaciones independientes: se lanzan a
+  // la vez y la espera total queda en la mas lenta, no en la suma. El audio se
+  // pide con la duracion pedida (o el tope) y se corrige abajo si el sticker
+  // termino mas corto.
+  const audioEnParalelo = audioDesdeVideo(buffer, {
+    duracion: duracion ?? DURACION_MAXIMA,
+  }).catch((err) => {
+    log.aviso('stickeraudio · no pude extraer el audio', err?.message)
+    return null
+  })
+
   // El sticker manda el ritmo: si el clip se recorta para entrar en los
   // 500 KB de WhatsApp, el audio tiene que cortarse igual o el cliente
   // reproduce el sticker como GIF mudo.
@@ -138,10 +149,18 @@ async function manejar({ sock, jid, msg, args }) {
       `${recortado ? ', recortado por peso' : ''})`
   )
 
-  const audio = await audioDesdeVideo(buffer, { duracion: duracionReal }).catch((err) => {
-    log.aviso('stickeraudio · no pude extraer el audio', err?.message)
-    return null
-  })
+  let audio = await audioEnParalelo
+
+  // El sticker salio mas corto que el audio: se rehace el audio a esa medida.
+  if (audio && Math.abs((audio.segundos ?? 0) - duracionReal) > 0.3) {
+    log.depuracion(
+      `stickeraudio · el sticker quedo en ${duracionReal}s y el audio en ${audio.segundos}s, recortando el audio`
+    )
+    audio = await audioDesdeVideo(buffer, { duracion: duracionReal }).catch((err) => {
+      log.aviso('stickeraudio · no pude recortar el audio', err?.message)
+      return null
+    })
+  }
 
   if (recortado) {
     const segundos = Math.round(duracionReal * 10) / 10
