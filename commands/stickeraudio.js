@@ -1,12 +1,15 @@
 import {
+  contextoDeCita,
   resolverFuenteMedia,
   detectarTipoMedia,
   descargarMedia,
+  duracionDeBuffer,
   stickerDesdeVideoInfo,
   audioDesdeVideo,
   enviarSticker,
   enviarStickerConAudio,
 } from '../lib/multimedia.js'
+import { audioDeSticker } from '../lib/sticker-video.js'
 
 const DURACION_POR_DEFECTO = 6
 const DURACION_MAXIMA = 10
@@ -15,16 +18,25 @@ const DURACION_MAXIMA = 10
  * Sticker animado con el audio del propio video adentro (StickerMessage
  * .audioMessage, campo 26): un solo mensaje, sin nota de voz aparte.
  *
- * Uso: responde a un video o GIF con /stickeraudio [segundos]
+ * Uso:
+ *   responde a un video o GIF con /stickeraudio [segundos]
+ *   responde a un sticker con /stickeraudio para re-firmarlo con su audio
  */
 export default async ({ sock, jid, msg, args }) => {
   const fuente = resolverFuenteMedia(msg)
 
   if (!fuente) {
     await sock.sendMessage(jid, {
-      text: '❌ Responde a un *video* o *GIF* con el comando `/stickeraudio` para sacarle sticker y audio.',
+      text: '❌ Responde a un *video*, *GIF* o *sticker con audio* con el comando `/stickeraudio`.',
       quoted: msg,
     })
+    return
+  }
+
+  // Sticker: no hay audio que extraer, se vuelve a firmar con los metadatos
+  // del bot y se le pega el audio que ya tenia.
+  if (fuente.mensaje?.stickerMessage) {
+    await rehacerStickerConAudio({ sock, jid, msg, fuente: fuente.mensaje })
     return
   }
 
@@ -40,7 +52,7 @@ export default async ({ sock, jid, msg, args }) => {
 
   if (tipo !== 'video') {
     await sock.sendMessage(jid, {
-      text: '❌ Solo se pueden sacar stickers con audio de *videos* o *GIFs*.',
+      text: '❌ Solo se pueden sacar stickers con audio de *videos*, *GIFs* o *stickers*.',
       quoted: msg,
     })
     return
@@ -102,5 +114,54 @@ export default async ({ sock, jid, msg, args }) => {
         ? '❌ No se pudo convertir el video. Prueba con un video mas corto o mas liviano.'
         : '❌ No se pudo crear el sticker con audio. Es posible que el archivo ya no este disponible.'
     await sock.sendMessage(jid, { text: mensaje, quoted: msg })
+  }
+}
+
+/**
+ * Re-firma un sticker con los metadatos del bot y le vuelve a pegar su audio.
+ *
+ * `firmarSticker` descarta el EXIF viejo y escribe el nuevo, asi que el
+ * paquete sale siempre como Beerus Bot / Beerus_zv. El audio sale del guardado
+ * por hash o del campo 26; si no hay, el sticker sale igual, solo re-firmado.
+ */
+async function rehacerStickerConAudio({ sock, jid, msg, fuente }) {
+  const responder = (texto) => sock.sendMessage(jid, { text: texto, quoted: msg })
+
+  try {
+    const buffer = await descargarMedia(sock, fuente)
+
+    if (!buffer?.length) {
+      await responder('⚠️ *No pude descargar el sticker.* Inténtalo otra vez.')
+      return
+    }
+
+    const { audio, origen } = await audioDeSticker(sock, fuente, {
+      idSticker: contextoDeCita(msg)?.stanzaId ?? msg?.key?.id,
+    })
+
+    if (!audio) {
+      await enviarSticker(sock, jid, buffer, msg)
+      await responder('🔇 Ese sticker no trae audio; salió igual con la firma nueva.')
+      return
+    }
+
+    const segundos = await duracionDeBuffer(audio, 'ogg')
+
+    try {
+      await enviarStickerConAudio(sock, jid, buffer, audio, {
+        quoted: msg,
+        segundos: segundos ?? undefined,
+      })
+    } catch (err) {
+      console.error('[stickeraudio] no se pudo adjuntar el audio al sticker:', err)
+      await enviarSticker(sock, jid, buffer, msg)
+      await responder('⚠️ WhatsApp rechazó el audio dentro del sticker; salió con la firma nueva.')
+      return
+    }
+
+    console.log(`[stickeraudio] sticker re-firmado · audio ${origen} · ${segundos ?? '?'}s`)
+  } catch (err) {
+    console.error('[stickeraudio] no pude re-firmar el sticker:', err)
+    await responder('⚠️ *No pude re-firmar el sticker.* Inténtalo otra vez.')
   }
 }
