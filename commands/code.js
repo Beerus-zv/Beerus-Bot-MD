@@ -77,6 +77,24 @@ function numeroDelRemitente({ msg, sender, sock }) {
   return null
 }
 
+/**
+ * Manda el codigo solo, en su propio mensaje, y despues las instrucciones.
+ *
+ * Un mensaje largo no se puede copiar por partes en WhatsApp: con el codigo
+ * aislado, mantener pulsado y copiar se lleva exactamente el codigo.
+ */
+async function enviarCodigo(entregar, codigo, numero, { renovado = false } = {}) {
+  await entregar(codigo)
+
+  await entregar(
+    `${renovado ? '*Codigo nuevo* — el anterior ya no sirve.' : '*Codigo de vinculacion*'} — ${numero}\n\n` +
+      `En el WhatsApp de ese numero:\n` +
+      `Ajustes > Dispositivos vinculados > Vincular un dispositivo\n` +
+      `> Vincular con numero de telefono.\n\n` +
+      `_Copia el codigo del mensaje de arriba. Caduca en ~1 minuto y el bot manda uno nuevo solo; si llega otro, usa el ultimo._`
+  )
+}
+
 /** Texto de estado para una entrada de `listarSubBots` */
 function estadoLegible(entrada) {
   switch (entrada.estado) {
@@ -199,16 +217,9 @@ export default async ({ sock, jid, msg, args, sender }) => {
 
   const resultado = await crearSubBot(numero, {
     dueno: sender,
-    alCodigo: async (codigo, num) => {
+    alCodigo: async (codigo, num, { renovado = false } = {}) => {
       codigoEntregado = true
-      await entregar(
-        `*Codigo de vinculacion* — ${num}\n\n` +
-          `*${codigo}*\n\n` +
-          `En el WhatsApp de ese numero:\n` +
-          `Ajustes > Dispositivos vinculados > Vincular un dispositivo\n` +
-          `> Vincular con numero de telefono.\n\n` +
-          `_El codigo caduca en ~1 minuto. Si vence, repite_ \`/code\`_._`
-      )
+      await enviarCodigo(entregar, codigo, num, { renovado })
     },
     alError: async (error, num) => {
       await entregar(`No se pudo generar el codigo para *${num}*: ${error}`)
@@ -233,14 +244,7 @@ export default async ({ sock, jid, msg, args, sender }) => {
   }
 
   if (!codigoEntregado && resultado.codigo) {
-    return responder(
-      `*Codigo de vinculacion* — ${numero}\n\n` +
-        `*${formatearCodigo(resultado.codigo)}*\n\n` +
-        `En el WhatsApp de ese numero:\n` +
-        `Ajustes > Dispositivos vinculados > Vincular un dispositivo\n` +
-        `> Vincular con numero de telefono.\n\n` +
-        `_El codigo caduca en ~1 minuto. Si vence, repite_ \`/code\`_._`
-    )
+    return enviarCodigo(responder, formatearCodigo(resultado.codigo), numero)
   }
 
   // El codigo llega por el callback del socket; si no, el aviso de arriba
