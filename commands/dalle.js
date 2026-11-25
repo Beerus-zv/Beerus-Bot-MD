@@ -21,6 +21,7 @@ import {
   hayClaveGemini,
   MODELO_IMAGEN,
 } from '../lib/dalle.js'
+import { log } from '../lib/logger.js'
 
 const AYUDA = `🎨 *DALL·E — imágenes con IA*
 
@@ -122,7 +123,7 @@ export default async ({ sock, jid, msg, args, sender }) => {
 
     await sock.sendMessage(jid, { image: buffer, caption }, { quoted: msg })
   } catch (e) {
-    console.error('[dalle] no se pudo generar la imagen:', e.message)
+    log.error('dalle · no se pudo generar la imagen', e.message)
     await sock.sendMessage(
       jid,
       { text: '❌ No se pudo generar la imagen. Intenta de nuevo en unos segundos.', quoted: msg }

@@ -33,6 +33,7 @@ import {
   normalizarColor,
 } from '../lib/uno.js'
 import { nombreLegible, formatearNumero } from '../lib/economia.js'
+import { log } from '../lib/logger.js'
 
 const AYUDA = `🃏 *UNO*
 
@@ -404,7 +405,7 @@ async function enviarPrivado({ sock, grupo, jugador, texto }) {
     await sock.sendMessage(destino, { text: texto })
     return true
   } catch (e) {
-    console.error('[uno] no se pudo enviar el privado:', e.message)
+    log.error('uno · no se pudo enviar el privado', e.message)
     await sock.sendMessage(grupo, {
       text: `⚠️ No pude escribirle por privado a @${digitosJid(jugador)}. Debe abrir el chat del bot para recibir su mano.`,
       mentions: [jidUsuario(destino)],
@@ -542,7 +543,7 @@ function programarTurno({ sock, grupo, jugador }) {
   const temporizador = setTimeout(() => {
     temporizadores.delete(grupo)
     jugarPorTiempo({ sock, grupo, jugador }).catch((e) =>
-      console.error('[uno] error al pasar el turno por tiempo:', e.message)
+      log.error('uno · error al pasar el turno por tiempo', e.message)
     )
   }, SEGUNDOS_TURNO * 1000)
 

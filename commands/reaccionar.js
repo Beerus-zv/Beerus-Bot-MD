@@ -1,5 +1,6 @@
 import { normalizeMessageContent } from '@whiskeysockets/baileys'
 import { descargarMedia } from '../lib/multimedia.js'
+import { log } from '../lib/logger.js'
 
 const EMOJIS = [
   '😂', '🤣', '🥺', '😱', '🔥', '💥', '👑', '💀', '🎉', '💖', '👀', '😎', '🚀', '🍺',
@@ -53,7 +54,7 @@ export default async ({ sock, jid, msg, args }) => {
   try {
     await sock.sendMessage(jid, { react: { text: emoji, key: claveCitada } })
   } catch (err) {
-    console.error('Error reaccionando:', err)
+    log.error('Error reaccionando', err)
     await sock.sendMessage(jid, {
       text: '❌ No se pudo reaccionar. Zamasu puede que no te deje hacerlo.',
       quoted: msg,

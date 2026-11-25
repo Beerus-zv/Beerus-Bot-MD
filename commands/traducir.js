@@ -1,4 +1,5 @@
 import { traducir } from '../lib/internet.js'
+import { log } from '../lib/logger.js'
 
 const AYUDA = `🌍 *Traducir*
 
@@ -38,7 +39,7 @@ export default async ({ sock, jid, msg, args }) => {
       quoted: msg,
     })
   } catch (err) {
-    console.error('Error traduciendo:', err)
+    log.error('Error traduciendo', err)
     await sock.sendMessage(jid, {
       text: `💥 *No pude traducir eso.*\n_${err.message}_`,
       quoted: msg,

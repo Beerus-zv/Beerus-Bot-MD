@@ -1,4 +1,5 @@
 import { buscarWikipedia, resumenWikipedia } from '../lib/internet.js'
+import { log } from '../lib/logger.js'
 
 const AYUDA = `📚 *Wikipedia*
 
@@ -64,7 +65,7 @@ export default async ({ sock, jid, msg, args }) => {
       quoted: msg,
     })
   } catch (err) {
-    console.error('Error en Wikipedia:', err)
+    log.error('Error en Wikipedia', err)
     await sock.sendMessage(jid, {
       text: `💥 *Falló la consulta a Wikipedia.*\n_${err.message}_`,
       quoted: msg,

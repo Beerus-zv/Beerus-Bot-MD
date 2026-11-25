@@ -25,6 +25,7 @@ import { obtenerAjuste } from '../database/db.js'
 import { tituloBot, monedaBot, iconoBot, bannerFijado, linkBot } from '../lib/ajustes-bot.js'
 import { readFile } from 'node:fs/promises'
 import { isAbsolute, resolve } from 'node:path'
+import { log } from '../lib/logger.js'
 
 const LIMITE_WA = 4096
 
@@ -69,7 +70,7 @@ export default async ({ sock, jid, msg, args, commands, PREFIX }) => {
           banner = { id: 'fijo', buffer: await readFile(ruta) }
         }
       } catch (err) {
-        console.error('No se pudo leer el banner fijado, se usa el aleatorio:', err.message)
+        log.error('No se pudo leer el banner fijado, se usa el aleatorio', err.message)
         banner = null
       }
       if (banner) return banner
@@ -77,7 +78,7 @@ export default async ({ sock, jid, msg, args, commands, PREFIX }) => {
     try {
       banner = await obtenerBannerMenu()
     } catch (err) {
-      console.error('No se pudo obtener el banner del menu:', err.message)
+      log.error('No se pudo obtener el banner del menu', err.message)
     }
     return banner
   }
@@ -97,10 +98,10 @@ export default async ({ sock, jid, msg, args, commands, PREFIX }) => {
       if (portada && cuerpo.length <= LIMITE_WA) {
         try {
           await sock.sendMessage(jid, { image: portada.buffer, caption: cuerpo, quoted: msg })
-          console.log(`[menu] banner ${portada.id} + categoria ${pedido}`)
+          log.depuracion(`menu · banner ${portada.id} + categoria ${pedido}`)
           return
         } catch (err) {
-          console.error('No se pudo enviar el banner de la categoria:', err)
+          log.error('No se pudo enviar el banner de la categoria', err)
         }
       }
 
@@ -165,7 +166,7 @@ export default async ({ sock, jid, msg, args, commands, PREFIX }) => {
       await sock.sendMessage(jid, { image: banner.buffer, caption: primera, quoted: msg })
       desde = 1
     } catch (err) {
-      console.error('No se pudo enviar el banner:', err)
+      log.error('No se pudo enviar el banner', err)
       desde = 0
     }
   }
@@ -183,5 +184,5 @@ export default async ({ sock, jid, msg, args, commands, PREFIX }) => {
 
   const conBanner = Boolean(banner) && desde === 1
   const enviados = (conBanner ? 1 : 0) + (bloques.length - desde)
-  console.log(`[menu] banner ${conBanner ? banner.id : 'no'} + indice en ${enviados} mensaje(s)`)
+  log.depuracion(`menu · banner ${conBanner ? banner.id : 'no'} + indice en ${enviados} mensaje(s)`)
 }

@@ -1,4 +1,5 @@
 import { clima } from '../lib/internet.js'
+import { log } from '../lib/logger.js'
 
 const AYUDA = `🌡️ *Clima*
 
@@ -41,7 +42,7 @@ export default async ({ sock, jid, msg, args }) => {
 
     await sock.sendMessage(jid, { text: texto, quoted: msg })
   } catch (err) {
-    console.error('Error consultando el clima:', err)
+    log.error('Error consultando el clima', err)
     const mensaje =
       err.message === 'NO_ENCONTRADA'
         ? `😕 No conozco la ciudad *${ciudad}*.`

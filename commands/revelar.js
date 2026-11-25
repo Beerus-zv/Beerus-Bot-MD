@@ -4,6 +4,7 @@ import {
   descargarMedia,
 } from '../lib/multimedia.js'
 import { normalizeMessageContent } from '@whiskeysockets/baileys'
+import { log } from '../lib/logger.js'
 
 /**
  * Reenvía un mensaje de "ver una vez" (imagen o video) como media normal.
@@ -43,7 +44,7 @@ export default async ({ sock, jid, msg }) => {
       await sock.sendMessage(jid, { image: buffer, caption, quoted: msg })
     }
   } catch (err) {
-    console.error('Error revelando el mensaje:', err)
+    log.error('Error revelando el mensaje', err)
     await sock.sendMessage(jid, {
       text: '❌ No se pudo guardar el contenido. Es posible que ya haya sido eliminado.',
       quoted: msg,

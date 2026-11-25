@@ -20,6 +20,7 @@ import { recargaActiva } from '../lib/economia.js'
 import { buscarNSFW, postRecibibles, descargarPost, extensionReal } from '../lib/nsfw.js'
 import { accionNSFW, fraseNSFW, listarAccionesNSFW } from '../lib/nsfw-acciones.js'
 import { mimeDe } from '../lib/descargas.js'
+import { log } from '../lib/logger.js'
 
 const CLAVE_RECARGA = 'nsfw-accion'
 
@@ -238,7 +239,7 @@ export function fabricarAccionNSFW(clave, nombre = clave, permiteSolo = false) {
       try {
         mediaSolo = await mediaDeTag(def)
       } catch (err) {
-        console.error(`[nsfw-accion] ${clave}:`, err.message)
+        log.error(`nsfw-accion · ${clave}`, err.message)
       }
 
       if (mediaSolo) {
@@ -247,7 +248,7 @@ export function fabricarAccionNSFW(clave, nombre = clave, permiteSolo = false) {
           marcarUso(quien, CLAVE_RECARGA)
           return
         } catch (err) {
-          console.error(`[nsfw-accion] envio ${clave}:`, err.message)
+          log.error(`nsfw-accion · envio ${clave}`, err.message)
         }
       }
 
@@ -288,7 +289,7 @@ export function fabricarAccionNSFW(clave, nombre = clave, permiteSolo = false) {
     try {
       media = await mediaDeTag(def)
     } catch (err) {
-      console.error(`[nsfw-accion] ${clave}:`, err.message)
+      log.error(`nsfw-accion · ${clave}`, err.message)
       media = null
     }
 
@@ -303,7 +304,7 @@ export function fabricarAccionNSFW(clave, nombre = clave, permiteSolo = false) {
     try {
       await enviarMedia(sock, jid, media, frase, [quien, objetivoJid], msg)
     } catch (err) {
-      console.error(`[nsfw-accion] envio ${clave}:`, err.message)
+      log.error(`nsfw-accion · envio ${clave}`, err.message)
       // El archivo no salio: al menos la frase queda, con la mencion hecha
       await sock.sendMessage(jid, { text: frase, mentions: [quien, objetivoJid], quoted: msg })
       return
@@ -339,7 +340,7 @@ export function fabricarImagenNSFW(clave) {
     try {
       media = await mediaDeTag(def)
     } catch (err) {
-      console.error(`[nsfw-imagen] ${clave}:`, err.message)
+      log.error(`nsfw-imagen · ${clave}`, err.message)
     }
 
     if (!media) {
@@ -353,7 +354,7 @@ export function fabricarImagenNSFW(clave) {
     try {
       await enviarMedia(sock, jid, media, `🏷️ ${media.post.fuente} · 📊 ${media.post.score}`, [], msg)
     } catch (err) {
-      console.error(`[nsfw-imagen] envio ${clave}:`, err.message)
+      log.error(`nsfw-imagen · envio ${clave}`, err.message)
       return
     }
 

@@ -4,6 +4,7 @@
  *   /qr https://beerus-bot-md.com
  */
 import QRCode from 'qrcode'
+import { log } from '../lib/logger.js'
 
 export default async ({ sock, jid, msg, args }) => {
   const texto = args.join(' ').trim()
@@ -34,7 +35,7 @@ export default async ({ sock, jid, msg, args }) => {
       quoted: msg,
     })
   } catch (err) {
-    console.error('Error generando el QR:', err)
+    log.error('Error generando el QR', err)
     await sock.sendMessage(jid, {
       text: '❌ No se pudo generar el código QR.',
       quoted: msg,

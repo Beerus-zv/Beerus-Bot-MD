@@ -2,6 +2,8 @@
  * .igstory <usuario> — descarga historias de Instagram.
  * Usa API pública + fetch nativo (sin axios).
  */
+import { log } from '../lib/logger.js'
+
 export default async ({ sock, jid, msg, args }) => {
   const user = String(args[0] || '').trim()
   if (!user) {
@@ -23,7 +25,7 @@ export default async ({ sock, jid, msg, args }) => {
       } catch (_) {}
     }
   } catch (e) {
-    console.error(e)
+    log.error('igstory', e)
     await sock.sendMessage(jid, { text: '❌ Error al descargar historias.', quoted: msg })
   }
 }

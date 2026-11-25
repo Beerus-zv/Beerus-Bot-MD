@@ -4,6 +4,7 @@ import {
   detectarTipoMedia,
   descargarMedia,
 } from '../lib/multimedia.js'
+import { log } from '../lib/logger.js'
 
 /** Filtros disponibles (inspirados en los plugins blur/grayscale/sepia/invert/sharpen de MEGA-MD) */
 export const EFECTOS = {
@@ -56,7 +57,7 @@ export default async ({ sock, jid, msg, args }) => {
 
     await sock.sendMessage(jid, { image: resultado, caption: `🎨 Efecto: *${efecto}*\n_${EFECTOS[efecto]}_`, quoted: msg })
   } catch (err) {
-    console.error('Error aplicando el efecto:', err)
+    log.error('Error aplicando el efecto', err)
     await sock.sendMessage(jid, {
       text: '❌ No se pudo procesar la imagen. Intenta con otra (mejor en jpg/png) o un efecto más suave.',
       quoted: msg,

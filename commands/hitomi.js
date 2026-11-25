@@ -1,5 +1,6 @@
 import { bajarArchivo } from '../lib/descargas.js'
 import { crearPdf } from '../lib/pdf.js'
+import { log } from '../lib/logger.js'
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36'
@@ -135,7 +136,7 @@ export async function bajarPaginas(galeria, gg) {
           else saltadas += 1
         } catch (err) {
           saltadas += 1
-          console.warn(`[hitomi] pagina ${idx + 1} fallo: ${err.message}`)
+          log.aviso(`hitomi · pagina ${idx + 1} fallo: ${err.message}`)
         }
       })
     )
@@ -193,9 +194,9 @@ export default async ({ sock, jid, msg, args }) => {
       },
       { quoted: msg }
     )
-    console.log(`[hitomi] ${id} -> PDF (${buffers.length} paginas, ${(pdf.length / 1048576).toFixed(1)} MB)`)
+    log.depuracion(`hitomi · ${id} -> PDF (${buffers.length} paginas, ${(pdf.length / 1048576).toFixed(1)} MB)`)
   } catch (err) {
-    console.error('[hitomi]', err.message)
+    log.error('hitomi', err.message)
     await sock.sendMessage(
       jid,
       { text: `❌ *No se pudo descargar la galería ${id}.*\n_${err.message}_` },

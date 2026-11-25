@@ -9,6 +9,7 @@
  */
 import { contextoDeCita, descargarMedia, esWebpAnimado, stickerRespondido } from '../lib/multimedia.js'
 import { stickerAMp4 } from '../lib/sticker-video.js'
+import { log } from '../lib/logger.js'
 
 /** Tope para que un cuelgue se convierta en un aviso y no en silencio */
 const TOPE_MS = 150000
@@ -60,7 +61,7 @@ export default async ({ sock, jid, msg }) => {
       quoted: msg,
     })
   } catch (err) {
-    console.error('[tovideo] fallo:', err)
+    log.error('tovideo · fallo', err)
     await responder(`⚠️ *No pude pasar el sticker a video.*\n_${String(err?.message || err).slice(0, 180)}_`)
   }
 }

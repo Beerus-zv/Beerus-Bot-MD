@@ -4,6 +4,7 @@
  */
 import { comandoGrupo } from '../lib/comandoGrupo.js'
 import { descargarMedia, obtenerCitado, detectarTipoMedia } from '../lib/multimedia.js'
+import { log } from '../lib/logger.js'
 
 export default comandoGrupo({
   uso: 'Uso: /groupimage (responde a una imagen)',
@@ -39,7 +40,7 @@ export default comandoGrupo({
         quoted: msg,
       })
     } catch (err) {
-      console.error('[groupimage] error:', err.message)
+      log.error('groupimage · error', err.message)
       await sock.sendMessage(jid, {
         text: '💥 WhatsApp no aceptó la foto. _Prueba con una imagen más nueva o más clara._',
         quoted: msg,

@@ -3,6 +3,7 @@ import {
   enviarSticker,
 } from '../lib/multimedia.js'
 import { obtenerAvatarBeerus } from '../lib/avatar.js'
+import { log } from '../lib/logger.js'
 
 /**
  * Envia un sticker aleatorio de Beerus (WebP 512x512).
@@ -17,7 +18,7 @@ export default async ({ sock, jid, msg }) => {
 
     await enviarSticker(sock, jid, sticker, msg)
   } catch (err) {
-    console.error('Error creando el sticker aleatorio:', err)
+    log.error('Error creando el sticker aleatorio', err)
     await sock.sendMessage(jid, {
       text: '❌ No se pudo crear el sticker aleatorio. Intenta de nuevo.',
       quoted: msg,

@@ -1,5 +1,6 @@
 import { bajarArchivo } from '../lib/descargas.js'
 import { crearPdf } from '../lib/pdf.js'
+import { log } from '../lib/logger.js'
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36'
@@ -94,9 +95,9 @@ export default async ({ sock, jid, msg, args }) => {
         `🔞 *${titulo}*\n📄 ${paginas.length} páginas${saltadas ? ` · ${saltadas} fallaron` : ''}\n📦 ${(pdf.length / 1048576).toFixed(1)} MB`,
       quoted: msg,
     })
-    console.log(`[vmp] ${enlace} -> PDF (${buffers.length} paginas, ${(pdf.length / 1048576).toFixed(1)} MB)`)
+    log.depuracion(`vmp · ${enlace} -> PDF (${buffers.length} paginas, ${(pdf.length / 1048576).toFixed(1)} MB)`)
   } catch (err) {
-    console.error('[vmp]', err.message)
+    log.error('vmp', err.message)
     await sock.sendMessage(jid, {
       text: `❌ *No se pudo descargar el manga.*\n_${err.message}_`,
       quoted: msg,

@@ -5,6 +5,7 @@ import {
   stickerDesdeVideo,
   enviarSticker,
 } from '../lib/multimedia.js'
+import { log } from '../lib/logger.js'
 
 /**
  * Convierte un video corto en un sticker animado de WhatsApp (WebP 512x512).
@@ -56,7 +57,7 @@ export default async ({ sock, jid, msg, args }) => {
 
     await enviarSticker(sock, jid, sticker, msg)
   } catch (err) {
-    console.error('Error creando el sticker de video:', err)
+    log.error('Error creando el sticker de video', err)
     const mensaje =
       String(err?.message || '').includes('FFMPEG')
         ? '❌ No se pudo convertir el video. Intenta con un video más corto.'

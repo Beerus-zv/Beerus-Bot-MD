@@ -8,6 +8,7 @@
  */
 import { contextoDeCita, descargarMedia, esWebpAnimado, stickerRespondido } from '../lib/multimedia.js'
 import { stickerAMp4 } from '../lib/sticker-video.js'
+import { log } from '../lib/logger.js'
 
 export default async ({ sock, jid, msg }) => {
   const fuente = stickerRespondido(msg)
@@ -24,7 +25,7 @@ export default async ({ sock, jid, msg }) => {
   try {
     buffer = await descargarMedia(sock, fuente)
   } catch (err) {
-    console.error('[toimg] error descargando el sticker:', err)
+    log.error('toimg · error descargando el sticker', err)
   }
 
   if (!buffer) {
@@ -59,7 +60,7 @@ export default async ({ sock, jid, msg }) => {
       })
     }
   } catch (err) {
-    console.error('[toimg] fallo la conversión:', err)
+    log.error('toimg · fallo la conversión', err)
     await sock.sendMessage(jid, {
       text: '⚠️ *No pude convertir el sticker.* Si es animado, prueba de nuevo.',
       quoted: msg,

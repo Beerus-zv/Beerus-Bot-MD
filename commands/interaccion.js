@@ -11,6 +11,7 @@ import { esGrupo, obtenerMetadata, resolverObjetivo, tokenMencion } from '../lib
 import { INTERACCIONES, gifDeInteraccion, fraseInteraccion } from '../lib/interacciones.js'
 import { marcarUso } from '../database/db.js'
 import { recargaActiva } from '../lib/economia.js'
+import { log } from '../lib/logger.js'
 
 /** Recarga compartida de los GIF (cuesta CPU el ffmpeg) */
 const CLAVE_RECARGA = 'interaccion'
@@ -84,7 +85,7 @@ export function fabricarInteraccion(clave, nombre = clave) {
         quoted: msg,
       })
     } catch (err) {
-      console.error(`[interaccion] ${clave}:`, err.message)
+      log.error(`interaccion · ${clave}`, err.message)
       // Sin GIF queda al menos la frase con las menciones hechas
       await sock.sendMessage(jid, {
         text: frase,

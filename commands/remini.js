@@ -3,6 +3,7 @@
  * Uso: responde a una imagen o envía imagen con `.remini`
  */
 import FormData from 'form-data'
+import { log } from '../lib/logger.js'
 
 export default async ({ sock, jid, msg }) => {
   const quoted = msg.quoted || msg
@@ -46,7 +47,7 @@ export default async ({ sock, jid, msg }) => {
     // Cleanup temp
     try { fs.unlinkSync(tempPath) } catch (_) {}
   } catch (e) {
-    console.error(e)
+    log.error('remini', e)
     await sock.sendMessage(jid, { text: '❌ Falló al mejorar la imagen.', quoted: msg })
   }
 }

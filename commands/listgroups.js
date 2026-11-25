@@ -1,3 +1,5 @@
+import { log } from '../lib/logger.js'
+
 export default async ({ sock, jid, msg }) => {
   try {
     const todos = await sock.groupFetchAllParticipating()
@@ -30,7 +32,7 @@ export default async ({ sock, jid, msg }) => {
       quoted: msg,
     })
   } catch (err) {
-    console.error('Error listando los grupos:', err)
+    log.error('Error listando los grupos', err)
     await sock.sendMessage(jid, {
       text: '❌ No se pudo obtener la lista de grupos.',
       quoted: msg,

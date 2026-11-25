@@ -1,4 +1,5 @@
 import { buscarYoutube } from '../lib/internet.js'
+import { log } from '../lib/logger.js'
 
 const AYUDA = `📺 *YouTube*
 
@@ -46,7 +47,7 @@ export default async ({ sock, jid, msg, args }) => {
       quoted: msg,
     })
   } catch (err) {
-    console.error('Error buscando en YouTube:', err)
+    log.error('Error buscando en YouTube', err)
     await sock.sendMessage(jid, {
       text: `💥 *Falló la búsqueda en YouTube.*\n_${err.message}_`,
       quoted: msg,

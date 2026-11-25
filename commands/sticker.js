@@ -6,6 +6,7 @@ import {
   stickerDesdeVideo,
   enviarSticker,
 } from '../lib/multimedia.js'
+import { log } from '../lib/logger.js'
 
 /**
  * Convierte una imagen o un video en un sticker de WhatsApp.
@@ -55,7 +56,7 @@ export default async ({ sock, jid, msg, args }) => {
 
     await enviarSticker(sock, jid, sticker, msg)
   } catch (err) {
-    console.error('Error creando el sticker:', err)
+    log.error('Error creando el sticker', err)
     await sock.sendMessage(jid, {
       text: '❌ No se pudo crear el sticker. Es posible que el archivo ya no esté disponible.',
       quoted: msg,

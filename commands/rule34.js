@@ -12,6 +12,7 @@ import { buscarNSFW, postRecibibles, descargarPost, extensionReal, mejoresPosts,
 import { mimeDe } from '../lib/descargas.js'
 import { recargaActiva } from '../lib/economia.js'
 import sharp from 'sharp'
+import { log } from '../lib/logger.js'
 
 const CLAVE_RECARGA = 'nsfw'
 /** Si el original pasa de aqui se reconvierte a JPEG de alta calidad */
@@ -139,7 +140,7 @@ export async function ejecutarBusqueda({ sock, jid, msg, args, sender }, { azar 
         post = candidato
       } catch (err) {
         ultimoErrorDescarga = err
-        console.warn(`[nsfw] se descarta ${candidato.fuente} ${candidato.id}: ${err.message}`)
+        log.aviso(`nsfw · se descarta ${candidato.fuente} ${candidato.id}: ${err.message}`)
       }
     }
 
@@ -191,9 +192,9 @@ export async function ejecutarBusqueda({ sock, jid, msg, args, sender }, { azar 
     // La recarga se gasta solo si la entrega salio completa
     marcarUso(quien, CLAVE_RECARGA)
 
-    console.log(`[nsfw] ${post.fuente} ${post.id} (${(buffer.length / 1024).toFixed(0)} KB) -> ${jid}`)
+    log.depuracion(`nsfw · ${post.fuente} ${post.id} (${(buffer.length / 1024).toFixed(0)} KB) -> ${jid}`)
   } catch (err) {
-    console.error('[nsfw] error:', err.message)
+    log.error('nsfw · error', err.message)
     await sock.sendMessage(jid, {
       text: '💥 El sótano no respondió. _Intenta con otros tags._',
       quoted: msg,

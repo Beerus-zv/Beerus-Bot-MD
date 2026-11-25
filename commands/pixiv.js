@@ -1,6 +1,7 @@
 import { bajarArchivo, formatearDuracion } from '../lib/descargas.js'
 import { crearPdf } from '../lib/pdf.js'
 import sharp from 'sharp'
+import { log } from '../lib/logger.js'
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36'
@@ -89,7 +90,7 @@ export default async ({ sock, jid, msg, args }) => {
   try {
     obra = await pedirJson(`illust/${id}`)
   } catch (err) {
-    console.error('[pixiv]', err.message)
+    log.error('pixiv', err.message)
     await sock.sendMessage(jid, {
       text:
         `❌ *No se pudo leer la obra ${id}.*\n_${err.message}_\n\n` +
@@ -174,7 +175,7 @@ export default async ({ sock, jid, msg, args }) => {
           `📕 *${titulo}*\n👤 ${autor}\n📄 ${paginas.length} páginas${saltadas ? ` · ${saltadas} fallaron` : ''}\n📦 ${(pdf.length / 1048576).toFixed(1)} MB`,
         quoted: msg,
       })
-      console.log(`[pixiv] manga ${id} -> PDF (${buffers.length} paginas, ${(pdf.length / 1048576).toFixed(1)} MB)`)
+      log.depuracion(`pixiv · manga ${id} -> PDF (${buffers.length} paginas, ${(pdf.length / 1048576).toFixed(1)} MB)`)
       return
     }
 
@@ -189,9 +190,9 @@ export default async ({ sock, jid, msg, args }) => {
         `\n📦 ${(jpeg.length / 1048576).toFixed(1)} MB`,
       quoted: msg,
     })
-    console.log(`[pixiv] ilustracion ${id} -> imagen (${(jpeg.length / 1048576).toFixed(1)} MB)`)
+    log.depuracion(`pixiv · ilustracion ${id} -> imagen (${(jpeg.length / 1048576).toFixed(1)} MB)`)
   } catch (err) {
-    console.error('[pixiv]', err.message)
+    log.error('pixiv', err.message)
     await sock.sendMessage(jid, {
       text: `💥 *No se pudo descargar la obra ${id}.*\n_${err.message}_\n🔗 https://www.pixiv.net/artworks/${id}`,
       quoted: msg,

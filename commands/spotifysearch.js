@@ -5,6 +5,7 @@
  * último recurso, YouTube (yt-dlp). Usa fetch nativo.
  */
 import { bajarArchivo, buscarEnYouTube, descargarContenido, formatearDuracion, LIMITES } from '../lib/descargas.js'
+import { log } from '../lib/logger.js'
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36'
@@ -73,11 +74,11 @@ async function descargarCancion(urlSpotify, cancion) {
     try {
       const r = await d.bajar(urlSpotify)
       if (r.buffer?.length) {
-        console.log(`[spotifysearch] ${d.nombre} -> ${(r.buffer.length / 1048576).toFixed(1)} MB`)
+        log.depuracion(`spotifysearch · ${d.nombre} -> ${(r.buffer.length / 1048576).toFixed(1)} MB`)
         return r
       }
     } catch (err) {
-      console.warn(`[spotifysearch] ${d.nombre} fallo:`, err.message)
+      log.aviso(`spotifysearch · ${d.nombre} fallo`, err.message)
     }
   }
 
@@ -86,7 +87,7 @@ async function descargarCancion(urlSpotify, cancion) {
   const [primero] = await buscarEnYouTube(`${nombre} audio`, 1)
   if (!primero) throw new Error('no pude bajar la canción')
   const r = await descargarContenido(primero.url, { maxMB: 25, soloAudio: true })
-  console.log('[spotifysearch] youtube ->', primero.titulo)
+  log.depuracion('spotifysearch · youtube ->', primero.titulo)
   return { buffer: r.buffer, titulo: cancion?.titulo || r.titulo, artista: cancion?.artista || r.autor }
 }
 
@@ -127,11 +128,11 @@ export default async ({ sock, jid, msg, args }) => {
       try {
         const r = await descargarCancion(cancion.url, cancion)
         await enviarCancion(sock, jid, msg, cancion, r)
-        console.log(`[spotifysearch] "${consulta}" -> ${r.titulo || cancion.titulo} (${(r.buffer.length / 1048576).toFixed(1)} MB)`)
+        log.depuracion(`spotifysearch · "${consulta}" -> ${r.titulo || cancion.titulo} (${(r.buffer.length / 1048576).toFixed(1)} MB)`)
         return
       } catch (err) {
         ultimoError = err
-        console.warn('[spotifysearch] candidata fallo:', err.message)
+        log.aviso('spotifysearch · candidata fallo', err.message)
       }
     }
 
@@ -141,7 +142,7 @@ export default async ({ sock, jid, msg, args }) => {
       { quoted: msg }
     )
   } catch (e) {
-    console.error('[spotifysearch]', e)
+    log.error('spotifysearch', e)
     await sock.sendMessage(jid, { text: '❌ Error en el proceso.' }, { quoted: msg })
   }
 }

@@ -13,6 +13,7 @@
  */
 import { esGrupo, obtenerMetadata, esAdmin } from '../lib/grupo.js'
 import { modoChat, configurarModo } from '../database/db.js'
+import { log } from '../lib/logger.js'
 
 const LEYENDAS = {
   bot: 'el bot',
@@ -68,7 +69,7 @@ export function fabricarModo(modo) {
       try {
         metadata = await obtenerMetadata(sock, jid)
       } catch (err) {
-        console.error(`[modo ${modo}] metadata:`, err.message)
+        log.error(`[modo ${modo}] metadata`, err.message)
       }
       if (!metadata || !esAdmin(metadata, sender || msg.key.participant)) {
         await sock.sendMessage(jid, {

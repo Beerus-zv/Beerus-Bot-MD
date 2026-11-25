@@ -5,6 +5,7 @@
  *   /hidetag Reunión mañana a las 8
  */
 import { obtenerMetadata, esGrupo } from '../lib/grupo.js'
+import { log } from '../lib/logger.js'
 
 export default async ({ sock, jid, msg, args }) => {
   if (!esGrupo(jid)) {
@@ -21,7 +22,7 @@ export default async ({ sock, jid, msg, args }) => {
   try {
     metadata = await obtenerMetadata(sock, jid)
   } catch (err) {
-    console.error('Error obteniendo los metadatos del grupo:', err)
+    log.error('Error obteniendo los metadatos del grupo', err)
     await sock.sendMessage(jid, {
       text: '❌ No se pudo obtener la información del grupo.',
       quoted: msg,

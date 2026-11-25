@@ -2,6 +2,8 @@
  * Encuesta nativa de WhatsApp (inspirado en el plugin 'poll' de MEGA-MD).
  * Uso: /encuesta Pregunta | Opcion 1 | Opcion 2 | ...
  */
+import { log } from '../lib/logger.js'
+
 export default async ({ sock, jid, msg, args }) => {
   const texto = (args || []).join(' ')
   const partes = texto
@@ -43,7 +45,7 @@ export default async ({ sock, jid, msg, args }) => {
       },
     })
   } catch (err) {
-    console.error('Error creando la encuesta:', err)
+    log.error('Error creando la encuesta', err)
     await sock.sendMessage(jid, {
       text: '❌ No se pudo crear la encuesta. Intenta de nuevo.',
       quoted: msg,

@@ -18,6 +18,7 @@ import {
   nombresProveedores,
   MODELO_LIBRE,
 } from '../lib/ia.js'
+import { log } from '../lib/logger.js'
 
 const AYUDA = `🐱 *Beerus, Dios de la Destrucción*
 
@@ -77,7 +78,7 @@ export async function charlarConBeerus({ sock, jid, msg, pregunta, modo = 'libre
     await sock.sendMessage(jid, { text: `${texto}${aviso}` }, { quoted: msg })
     return true
   } catch (err) {
-    console.error('[ia] error:', err.message)
+    log.error('ia · error', err.message)
     await sock.sendMessage(jid, { text: fallo() }, { quoted: msg })
     return false
   } finally {

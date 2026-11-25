@@ -1,4 +1,5 @@
 import { leerUrl } from '../lib/internet.js'
+import { log } from '../lib/logger.js'
 
 const AYUDA = `🔗 *Leer una pagina web*
 
@@ -40,7 +41,7 @@ export default async ({ sock, jid, msg, args }) => {
       quoted: msg,
     })
   } catch (err) {
-    console.error('Error leyendo la URL:', err)
+    log.error('Error leyendo la URL', err)
     await sock.sendMessage(jid, {
       text: `💥 *No pude leer esa pagina.*\n_${err.message}_`,
       quoted: msg,

@@ -6,6 +6,7 @@ import {
   formatearDuracion,
   convertirANotaVoz,
 } from '../lib/descargas.js'
+import { log } from '../lib/logger.js'
 
 const AYUDA = `🎵 *Audio de YouTube*
 
@@ -80,7 +81,7 @@ export default async ({ sock, jid, msg, args }) => {
         break
       } catch (err) {
         ultimoError = err
-        console.warn(`[audio] Fallo al descargar ${candidato.url}: ${err.message}`)
+        log.aviso(`audio · Fallo al descargar ${candidato.url}: ${err.message}`)
       }
     }
 
@@ -119,7 +120,7 @@ export default async ({ sock, jid, msg, args }) => {
         caption: `🎵 *${nombreFinal}*`,
         quoted: msg,
       })
-      console.log(`[audio] ${nombreFinal} -> nota de voz`)
+      log.depuracion(`audio · ${nombreFinal} -> nota de voz`)
       return
     }
 
@@ -134,11 +135,11 @@ export default async ({ sock, jid, msg, args }) => {
       quoted: msg,
     })
 
-    console.log(
-      `[audio] ${nombreFinal} -> audio (${(resultado.bytes / 1048576).toFixed(1)} MB, miniatura: ${miniatura ? 'si' : 'no'})`
+    log.depuracion(
+      `audio · ${nombreFinal} -> audio (${(resultado.bytes / 1048576).toFixed(1)} MB, miniatura: ${miniatura ? 'si' : 'no'})`
     )
   } catch (err) {
-    console.error('Error en /audio:', err)
+    log.error('Error en /audio', err)
     await sock.sendMessage(jid, {
       text: `💥 *No se pudo obtener el audio.*\n_${err.message}_\n\n_Prueba con otro nombre o con el enlace del video._`,
       quoted: msg,

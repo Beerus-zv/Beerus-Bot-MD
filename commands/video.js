@@ -5,6 +5,7 @@ import {
   formatearDuracion,
   LIMITES,
 } from '../lib/descargas.js'
+import { log } from '../lib/logger.js'
 
 const AYUDA = `🎬 *Video de YouTube*
 
@@ -82,7 +83,7 @@ export default async ({ sock, jid, msg, args }) => {
         break
       } catch (err) {
         ultimoError = err
-        console.warn(`[video] Fallo al descargar ${candidato.url}: ${err.message}`)
+        log.aviso(`video · Fallo al descargar ${candidato.url}: ${err.message}`)
       }
     }
 
@@ -102,7 +103,7 @@ export default async ({ sock, jid, msg, args }) => {
         caption: barra,
         quoted: msg,
       })
-      console.log(`[video] ${titulo || resultado.titulo} -> documento (${(resultado.bytes / 1048576).toFixed(1)} MB)`)
+      log.depuracion(`video · ${titulo || resultado.titulo} -> documento (${(resultado.bytes / 1048576).toFixed(1)} MB)`)
       return
     }
 
@@ -113,11 +114,11 @@ export default async ({ sock, jid, msg, args }) => {
       quoted: msg,
     })
 
-    console.log(
-      `[video] ${titulo || resultado.titulo} -> video (${(resultado.bytes / 1048576).toFixed(1)} MB)`
+    log.depuracion(
+      `video · ${titulo || resultado.titulo} -> video (${(resultado.bytes / 1048576).toFixed(1)} MB)`
     )
   } catch (err) {
-    console.error('Error en /video:', err)
+    log.error('Error en /video', err)
     await sock.sendMessage(jid, {
       text:
         `💥 *No se pudo obtener el video.*\n_${err.message}_\n\n` +

@@ -1,5 +1,6 @@
 import { readFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
+import { log } from '../lib/logger.js'
 
 const AYUDA =
   '🗣️ *Texto a voz*\n\n' +
@@ -52,7 +53,7 @@ export default async ({ sock, jid, msg, args }) => {
     })
     unlinkSync(archivo)
   } catch (err) {
-    console.error('Error generando la voz:', err)
+    log.error('Error generando la voz', err)
     await sock.sendMessage(jid, {
       text: '❌ No se pudo generar el audio (posible límite de texto o servicio). Intentá con una frase corta.',
       quoted: msg,

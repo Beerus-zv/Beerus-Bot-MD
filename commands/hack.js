@@ -1,3 +1,5 @@
+import { log } from '../lib/logger.js'
+
 const ESPERA = (ms) => new Promise((r) => setTimeout(r, ms))
 
 const PASOS = [
@@ -43,7 +45,7 @@ export default async ({ sock, jid, msg, args }) => {
       if (porcentaje < 100) await ESPERA(1800)
     }
   } catch (err) {
-    console.error('Error en la parodia de hackeo:', err)
+    log.error('Error en la parodia de hackeo', err)
     await sock.sendMessage(jid, {
       text: '❌ Se interrumpió el hackeo... el objetivo se echó a volar. Intenta de nuevo.',
       quoted: msg,

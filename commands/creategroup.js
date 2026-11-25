@@ -1,3 +1,5 @@
+import { log } from '../lib/logger.js'
+
 export default async ({ sock, jid, msg, args }) => {
   const nombre = args.join(' ').trim()
 
@@ -17,7 +19,7 @@ export default async ({ sock, jid, msg, args }) => {
       quoted: msg,
     })
   } catch (err) {
-    console.error('Error creando el grupo:', err)
+    log.error('Error creando el grupo', err)
     await sock.sendMessage(jid, {
       text: '❌ No se pudo crear el grupo.',
       quoted: msg,

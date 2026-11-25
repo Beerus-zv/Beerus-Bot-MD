@@ -4,6 +4,7 @@
  * api.tiksearch.xyz, ya no existe). Usa fetch nativo.
  */
 import { bajarArchivo, LIMITES } from '../lib/descargas.js'
+import { log } from '../lib/logger.js'
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36'
@@ -48,11 +49,11 @@ async function buscarVideos(consulta) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const videos = api.extraer(await res.json()).filter((v) => /^https?:\/\//.test(v.url || ''))
       if (videos.length) {
-        console.log(`[tiktoksearch] ${api.nombre} -> ${videos.length} resultados`)
+        log.depuracion(`tiktoksearch · ${api.nombre} -> ${videos.length} resultados`)
         return videos
       }
     } catch (err) {
-      console.warn(`[tiktoksearch] API ${api.nombre} fallo:`, err.message)
+      log.aviso(`tiktoksearch · API ${api.nombre} fallo`, err.message)
     }
   }
   return []
@@ -99,7 +100,7 @@ export default async ({ sock, jid, msg, args }) => {
         )
         enviados += 1
       } catch (err) {
-        console.warn('[tiktoksearch] video fallo:', err.message)
+        log.aviso('tiktoksearch · video fallo', err.message)
       }
     }
 
@@ -111,9 +112,9 @@ export default async ({ sock, jid, msg, args }) => {
       )
       return
     }
-    console.log(`[tiktoksearch] "${texto}" -> ${enviados} videos`)
+    log.depuracion(`tiktoksearch · "${texto}" -> ${enviados} videos`)
   } catch (e) {
-    console.error('[tiktoksearch]', e)
+    log.error('tiktoksearch', e)
     await sock.sendMessage(jid, { text: '❌ Error en búsqueda TikTok.' }, { quoted: msg })
   }
 }

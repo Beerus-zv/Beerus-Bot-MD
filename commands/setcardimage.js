@@ -16,6 +16,7 @@ import { esOwnerMsg } from '../lib/owner.js'
 import { resolverFuenteMedia, detectarTipoMedia, descargarMedia } from '../lib/multimedia.js'
 import { bajarArchivo } from '../lib/descargas.js'
 import { guardarImagenPersonaje, enviarCartaPersonaje } from '../lib/imagenes.js'
+import { log } from '../lib/logger.js'
 
 /** Tope de descarga para la imagen que manda el usuario */
 const MAX_IMAGEN = 12 * 1024 * 1024
@@ -119,7 +120,7 @@ export default async ({ sock, jid, msg, args, sender, esGrupo }) => {
       buffer = await descargarMedia(sock, fuente.mensaje)
     }
   } catch (err) {
-    console.error('[setcardimage] no se pudo obtener la imagen:', err.message)
+    log.error('setcardimage · no se pudo obtener la imagen', err.message)
     return sock.sendMessage(jid, {
       text: '❌ No pude descargar la imagen. Inténtalo de nuevo o mándala como foto.',
       quoted: msg,
@@ -137,7 +138,7 @@ export default async ({ sock, jid, msg, args, sender, esGrupo }) => {
   try {
     await guardarImagenPersonaje(personaje, buffer)
   } catch (err) {
-    console.error('[setcardimage] no se pudo procesar la imagen:', err.message)
+    log.error('setcardimage · no se pudo procesar la imagen', err.message)
     return sock.sendMessage(jid, {
       text: '❌ Esa imagen no se pudo procesar. Prueba con una foto JPG o PNG.',
       quoted: msg,

@@ -1,4 +1,5 @@
 import { obtenerMensajes, totalChats, totalMensajes, totalNotas, totalUsuarios } from '../database/db.js'
+import { log } from '../lib/logger.js'
 
 export default async ({ sock, jid, msg }) => {
   try {
@@ -15,7 +16,7 @@ export default async ({ sock, jid, msg }) => {
       quoted: msg
     })
   } catch (err) {
-    console.error('Error obteniendo las estadísticas:', err)
+    log.error('Error obteniendo las estadísticas', err)
     await sock.sendMessage(jid, {
       text: '❌ No se pudieron obtener las estadísticas.',
       quoted: msg

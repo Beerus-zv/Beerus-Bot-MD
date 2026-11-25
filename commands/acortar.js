@@ -1,4 +1,5 @@
 import { pedir } from '../lib/internet.js'
+import { log } from '../lib/logger.js'
 
 /**
  * Acortador de URLs con TinyURL (basado en el plugin 'tiny' de MEGA-MD).
@@ -38,7 +39,7 @@ export default async ({ sock, jid, msg, args }) => {
       quoted: msg,
     })
   } catch (err) {
-    console.error('Error acortando la url:', err)
+    log.error('Error acortando la url', err)
     await sock.sendMessage(jid, {
       text: '❌ No se pudo acortar el enlace. El servicio anda saturado; intenta luego.',
       quoted: msg,

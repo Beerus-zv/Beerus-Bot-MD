@@ -1,4 +1,5 @@
 import { buscarWeb } from '../lib/internet.js'
+import { log } from '../lib/logger.js'
 
 const AYUDA = `🔎 *Búsqueda web*
 
@@ -46,7 +47,7 @@ export default async ({ sock, jid, msg, args }) => {
       quoted: msg,
     })
   } catch (err) {
-    console.error('Error en la busqueda web:', err)
+    log.error('Error en la busqueda web', err)
     await sock.sendMessage(jid, {
       text: `💥 *Falló la búsqueda.*\n_${err.message}_\n\n_Intenta de nuevo en un momento._`,
       quoted: msg,

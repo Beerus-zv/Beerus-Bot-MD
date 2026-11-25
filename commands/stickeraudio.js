@@ -11,6 +11,7 @@ import {
   enviarStickerConAudio,
 } from '../lib/multimedia.js'
 import { audioDeSticker } from '../lib/sticker-video.js'
+import { log } from '../lib/logger.js'
 
 const DURACION_POR_DEFECTO = 6
 const DURACION_MAXIMA = 10
@@ -49,7 +50,7 @@ export default async (ctx) => {
   } catch (err) {
     // Cualquier falla que se escape termina en un mensaje del chat, nunca en
     // silencio: el usuario tiene que saber que el comando corrio.
-    console.error('[stickeraudio] fallo el comando:', err)
+    log.error('stickeraudio · fallo el comando', err)
     await sock
       .sendMessage(jid, {
         text: `❌ *No pude completar el sticker con audio.*\n_${err?.message || 'error desconocido'}_`,
@@ -120,19 +121,19 @@ async function manejar({ sock, jid, msg, args }) {
     return
   }
 
-  console.log(`[stickeraudio] video recibido (${(buffer.length / 1024).toFixed(0)} KB)`)
+  log.depuracion(`stickeraudio · video recibido (${(buffer.length / 1024).toFixed(0)} KB)`)
 
   // El sticker manda el ritmo: si el clip se recorta para entrar en los
   // 500 KB de WhatsApp, el audio tiene que cortarse igual o el cliente
   // reproduce el sticker como GIF mudo.
   const { buffer: sticker, duracion: duracionReal } = await stickerDesdeVideoInfo(buffer, { duracion })
 
-  console.log(
-    `[stickeraudio] sticker listo (${(sticker.length / 1024).toFixed(0)} KB, ${duracionReal}s)`
+  log.depuracion(
+    `stickeraudio · sticker listo (${(sticker.length / 1024).toFixed(0)} KB, ${duracionReal}s)`
   )
 
   const audio = await audioDesdeVideo(buffer, { duracion: duracionReal }).catch((err) => {
-    console.warn('[stickeraudio] no pude extraer el audio:', err?.message)
+    log.aviso('stickeraudio · no pude extraer el audio', err?.message)
     return null
   })
 
@@ -150,8 +151,8 @@ async function manejar({ sock, jid, msg, args }) {
     return
   }
 
-  console.log(
-    `[stickeraudio] audio listo (${(audio.buffer.length / 1024).toFixed(0)} KB, ${audio.segundos}s)`
+  log.depuracion(
+    `stickeraudio · audio listo (${(audio.buffer.length / 1024).toFixed(0)} KB, ${audio.segundos}s)`
   )
 
   try {
@@ -161,7 +162,7 @@ async function manejar({ sock, jid, msg, args }) {
     })
   } catch (err) {
     // Si el cliente rechaza el campo 26, mejor el sticker solo que nada.
-    console.error('[stickeraudio] no pude adjuntar el audio al sticker:', err)
+    log.error('stickeraudio · no pude adjuntar el audio al sticker', err)
     await enviarSticker(sock, jid, sticker, msg)
     await sock.sendMessage(jid, {
       text: '⚠️ WhatsApp rechazó el audio del sticker; salió el sticker solo.',
@@ -201,10 +202,10 @@ async function rehacerStickerConAudio({ sock, jid, msg, fuente }) {
     const chunks = chunksWebp(buffer)
       .map((c) => `${c.nombre.trim() || '?'}(${c.datos.length})`)
       .join(' ')
-    console.log(
-      `[stickeraudio] sticker sin audio · campo 26: ${Boolean(fuente.audioMessage)} · busque: ${detalle}`
+    log.depuracion(
+      `stickeraudio · sticker sin audio · campo 26: ${Boolean(fuente.audioMessage)} · busque: ${detalle}`
     )
-    console.log(`[stickeraudio] chunks del webp: ${chunks || 'ninguno'}`)
+    log.depuracion(`stickeraudio · chunks del webp: ${chunks || 'ninguno'}`)
 
     await enviarSticker(sock, jid, buffer, msg)
     await responder(
@@ -221,11 +222,11 @@ async function rehacerStickerConAudio({ sock, jid, msg, fuente }) {
       segundos: segundos ?? undefined,
     })
   } catch (err) {
-    console.error('[stickeraudio] no pude adjuntar el audio al sticker:', err)
+    log.error('stickeraudio · no pude adjuntar el audio al sticker', err)
     await enviarSticker(sock, jid, buffer, msg)
     await responder('⚠️ WhatsApp rechazó el audio del sticker; salió con la firma nueva.')
     return
   }
 
-  console.log(`[stickeraudio] sticker re-firmado · audio ${origen} · ${segundos ?? '?'}s`)
+  log.depuracion(`stickeraudio · sticker re-firmado · audio ${origen} · ${segundos ?? '?'}s`)
 }

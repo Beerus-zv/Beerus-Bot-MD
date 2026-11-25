@@ -1,4 +1,5 @@
 import { pedirJson } from '../lib/internet.js'
+import { log } from '../lib/logger.js'
 
 /**
  * Datos de una IP con la API gratuita ipwho.is (plugin 'iplookup' de MEGA-MD).
@@ -47,7 +48,7 @@ export default async ({ sock, jid, msg, args }) => {
 
     await sock.sendMessage(jid, { text: texto, quoted: msg })
   } catch (err) {
-    console.error('Error rastreando ip:', err)
+    log.error('Error rastreando ip', err)
     await sock.sendMessage(jid, {
       text: '❌ No se pudo consultar la IP. El servicio no responde en este momento.',
       quoted: msg,

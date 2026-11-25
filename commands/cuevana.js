@@ -3,6 +3,8 @@
  * Usa fetch nativo + parseo HTML con cheerio (node_modules instalado).
  */
 
+import { log } from '../lib/logger.js'
+
 export default async ({ sock, jid, msg, args }) => {
   const query = String(args[0] || '').trim()
   if (!query) {
@@ -32,7 +34,7 @@ export default async ({ sock, jid, msg, args }) => {
     
     await sock.sendMessage(jid, { text: res, quoted: msg })
   } catch (err) {
-    console.error(err)
+    log.error('cuevana', err)
     await sock.sendMessage(jid, { text: '❌ Error al buscar peliculas.', quoted: msg })
   }
 }
