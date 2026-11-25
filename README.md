@@ -1,283 +1,107 @@
-<div align="center">
+<img src="assets/beerus-banner.png" alt="Beerus Bot MD" width="100%"/>
 
-<img src="assets/beerus-banner.png" alt="Beerus Bot MD" width="100%" style="border-radius:30px;"/>
+# Beerus Bot MD
 
-<br>
+Bot de WhatsApp multi-dispositivo escrito sobre Baileys, con sesión y datos en SQLite. Trae gacha anime, póker, UNO, economía, moderación de grupos, descargas y una IA con la personalidad de Beerus que funciona sin clave de API.
 
-<img src="https://readme-typing-svg.herokuapp.com?font=Orbitron&weight=900&size=22&pause=800&color=FF4D6D&center=true&vCenter=true&width=780&lines=🐱+Bot+de+WhatsApp+multi-dispositivo+con+Baileys;⚡+155+comandos+•+Gacha+anime+•+Poker+•+UNO;🤖+IA+de+Beerus+sin+clave+de+API;🛡️+Moderación+•+Economía+•+Descargas" alt="Typing SVG" />
+![Versión](https://img.shields.io/badge/version-2.5.0-FF4D6D?style=flat-square)
+![Node](https://img.shields.io/badge/node-22.13%2B-10B981?style=flat-square)
+![Licencia](https://img.shields.io/badge/license-MIT-8B5CF6?style=flat-square)
 
-<br>
+## En números
 
-<p>
-  <img src="https://img.shields.io/badge/🐱%20Versión-2.5.0-FF4D6D?style=for-the-badge&logo=github&logoColor=black&labelColor=0d0d0d" alt="Version"/>
-  <img src="https://img.shields.io/badge/⚡%20Node.js-22.13%2B-10B981?style=for-the-badge&logo=nodedotjs&logoColor=white&labelColor=065F46" alt="Node"/>
-  <img src="https://img.shields.io/badge/📜%20Licencia-MIT-8B5CF6?style=for-the-badge&logo=opensourceinitiative&logoColor=white&labelColor=5B21B6" alt="License"/>
-</p>
-
-<p>
-  <img src="https://img.shields.io/badge/💬%20Baileys-7.0%20RC-25D366?style=for-the-badge&logo=whatsapp&logoColor=white&labelColor=128C7E" alt="Baileys"/>
-  <img src="https://img.shields.io/badge/🗄️%20Base%20de%20datos-SQLite-F7B731?style=for-the-badge&logo=sqlite&logoColor=white&labelColor=8a5c00" alt="SQLite"/>
-  <img src="https://img.shields.io/badge/🎮%20Comandos-155-FF6B9D?style=for-the-badge&logo=electron&logoColor=white&labelColor=3d0a20" alt="Comandos"/>
-</p>
-
-<p>
-  <img src="https://img.shields.io/github/stars/Beerus-zv/Beerus-Bot-MD?style=social" alt="Stars"/>
-  <img src="https://img.shields.io/github/forks/Beerus-zv/Beerus-Bot-MD?style=social" alt="Forks"/>
-  <img src="https://komarev.com/ghpvc/?username=Beerus-zv&label=Visitas&color=FF4D6D&style=for-the-badge" alt="Views"/>
-</p>
-
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif">
-
-</div>
-
----
-
-<div align="center">
-
-## 📋 En Resumen
-
-</div>
-
-**Beerus Bot MD** es un bot de WhatsApp **multi-dispositivo, open source (MIT)** y sin
-Puppeteer ni `whatsapp-web.js`: habla el protocolo directamente con **Baileys** y guarda
-todo en **SQLite**. Trae gacha anime, póker, UNO, economía, moderación de grupos,
-descargas y una IA con la personalidad de Beerus que funciona **sin clave de API**.
-
-| | 💎 Detalle |
+| Dato | Valor |
 |:---|:---|
-| 🐱 **Qué es** | Bot de WhatsApp con **155 comandos** organizados en 16 categorías (más de 250 nombres contando alias) |
-| 🤖 **IA propia** | Personalidad de Beerus con memoria por chat · proveedores gratuitos en cascada · Gemini opcional |
-| 🎰 **Gacha** | Tiradas, rarezas, colección, mercado, intercambios y catálogo alimentado desde AniList y Fandom |
-| 🃏 **Juegos** | UNO completo, póker (Texas hold'em), ahorcado, ta-te-ti, adivinar, sopa de letras, verdad o reto |
-| 🛡️ **Moderación** | Antilink, antispam, antidelete, advertencias, bienvenidas, horarios, `hidetag` |
-| 📥 **Contenido** | YouTube, TikTok, Instagram, Facebook, MediaFire, Google Drive, Pinterest, Pixiv, Spotify |
-| ⚙️ **Stack** | Node.js 22.13+ (ESM) · Baileys · `node:sqlite` · sharp · ffmpeg |
-| 🔐 **Sesión** | Guardada en SQLite: un archivo en vez de ~1400 sueltos |
-| 👨‍💻 **Autor** | Beerus_zv · mantenido activamente |
-| 📦 **Repositorio** | [github.com/Beerus-zv/Beerus-Bot-MD](https://github.com/Beerus-zv/Beerus-Bot-MD) · Licencia **MIT** |
+| Comandos | 177 archivos en `commands/`, uno por comando |
+| Categorías | 18 |
+| Prefijos | `.` `#` `/` |
+| Stack | Node.js 22.13+ (ESM), Baileys, `node:sqlite`, sharp, ffmpeg |
+| Sesión | Un archivo SQLite en vez de ~1400 sueltos |
+| Licencia | MIT |
 
-<div align="center">
+## Qué es
 
-### ✨ Lo que lo hace destacar
+Se conecta a WhatsApp como un dispositivo vinculado más, usando `@whiskeysockets/baileys` y nada de automatización de navegador. No levanta Chromium, no gasta 800 MB de RAM en un navegador y no se rompe cuando WhatsApp cambia el DOM.
 
-</div>
+Por dentro hay tres piezas: un enrutador de mensajes, un registro de comandos y una capa de datos. Cada comando es un archivo en `commands/` que exporta una función.
 
-- **Sesión en SQLite** (`lib/auth-state.js`): escrituras atómicas. Si el proceso muere a
-  mitad de un lote, la llave entra entera o no entra — el esquema de 1400 archivos no
-  garantiza eso.
-- **Carga perezosa de comandos** (`lib/loader.js`): al arrancar solo se leen los
-  nombres de archivo; cada comando se compila la primera vez que alguien lo usa. El
-  arranque no toca 210 archivos, y `npm test` sí los carga todos para validarlos.
-- **Arranque con caché de bytecode** (`lib/arranque.js`): V8 guarda el módulo compilado
-  en `data/v8-cache/`, así el segundo arranque no vuelve a compilar lo mismo.
-- **IA sin clave de API**: tres proveedores gratuitos en cascada y un proveedor que falla
-  se aparta un rato para no hacer esperar a nadie. Con clave de Gemini mejora, pero no es
-  obligatoria.
-- **Verificación sin conectar** (`npm test`): sintaxis, carga de los 155 comandos, registro
-  sin referencias rotas, alias válidos, partición del menú y esquema SQLite en carpeta
-  temporal. Se corre antes de tocar producción.
-- **Mapa de dependencias** (`npm run graphify`): escáner de imports propio, sin
-  dependencias externas, con visor interactivo.
-- **Todo en SQLite**: chats, economía, gacha, moderación, VIP y sesión. Respaldar el bot es
-  copiar dos carpetas.
+## Cómo está armado
 
----
+- **Sesión en SQLite** (`lib/auth-state.js`): escrituras atómicas. Si el proceso muere a mitad de un lote, la llave entra entera o no entra. El esquema de 1400 archivos no garantiza eso.
+- **Carga perezosa de comandos** (`lib/loader.js`): al arrancar solo se leen los nombres de archivo; cada comando se compila la primera vez que alguien lo usa. El arranque no toca 177 archivos, y `npm test` sí los carga todos para validarlos.
+- **Caché de bytecode de V8** (`lib/arranque.js`): el módulo compilado queda en `data/v8-cache/`, así el segundo arranque no vuelve a compilar lo mismo.
+- **IA sin clave de API**: tres proveedores gratuitos en cascada. El que falla se aparta un rato para no hacer esperar a nadie. Con clave de Gemini mejora la latencia, pero no es obligatoria.
+- **Verificación sin conectar** (`npm test`): sintaxis, carga de los 177 comandos, registro sin referencias rotas, alias válidos, partición del menú y esquema SQLite en carpeta temporal.
+- **Mapa de dependencias** (`npm run graphify`): escáner de imports propio, sin dependencias externas, con visor interactivo.
+- **Todo en SQLite**: chats, economía, gacha, moderación, VIP y sesión. Respaldar el bot es copiar dos carpetas.
 
-<div align="center">
+## Características
 
-<details open>
-<summary><b>🗺️ Tabla de Contenidos — clic para expandir</b></summary>
-
-<br>
-
-| 🔗 Sección | 🔗 Sección | 🔗 Sección |
-|:---:|:---:|:---:|
-| [📋 En Resumen](#-en-resumen) | [✨ ¿Qué es Beerus Bot?](#-qué-es-beerus-bot-md) | [🌟 Características](#-características) |
-| [🤖 IA de Beerus](#-ia-de-beerus) | [🎰 Gacha Anime](#-gacha-anime) | [🎮 Juegos](#-juegos-disponibles) |
-| [🛡️ Grupos y Moderación](#-grupos-y-moderación) | [📥 Descargas y Multimedia](#-descargas-y-multimedia) | [🔐 Seguridad y Sesión](#-seguridad-y-sesión) |
-| [🚀 Instalación](#-instalación) | [⚙️ Configuración](#-configuración) | [🧩 Comandos](#-comandos) |
-| [🔧 Requisitos](#-requisitos-del-sistema) | [📁 Estructura](#-estructura-del-proyecto) | [🛠️ Scripts](#-scripts) |
-| [⚡ Actualización](#-sistema-de-actualización) | [❓ Problemas](#-problemas-comunes) | [❤️ Apoyar](#-apoyar-el-proyecto) |
-
-</details>
-
-</div>
-
----
-
-<div align="center">
-
-## ✨ ¿Qué es Beerus Bot MD?
-
-<img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&weight=700&size=18&pause=1000&color=FF4D6D&center=true&vCenter=true&width=700&lines=Bot+multi-dispositivo+sobre+Baileys;Sin+navegador+•+Sin+Puppeteer+•+Solo+el+protocolo;155+comandos+•+16+categorías+•+SQLite" alt="Que es" />
-
-</div>
-
-Beerus Bot MD se conecta a WhatsApp como un **dispositivo vinculado más**, usando
-`@whiskeysockets/baileys` y nada de automatización de navegador. Eso significa que no
-levanta un Chromium, no gasta 800 MB de RAM en navegador y no se rompe cuando WhatsApp
-cambia el DOM.
-
-Por dentro es simple: un enrutador de mensajes, un registro de comandos y una capa de
-datos. Cada comando es un archivo en `commands/` que exporta una función.
-
-```js
-const BeerusBot = {
-  version:     "2.5.0",
-  tecnologia:  "Baileys + node:sqlite + sharp + ffmpeg",
-  comandos:    155,
-  categorias:  16,
-  prefijos:    [".", "#", "/"],
-  archivos:    210,
-  caracteristicas: [
-    "🎰 Gacha anime con catálogo desde AniList y Fandom",
-    "🃏 UNO completo y póker Texas hold'em por grupos",
-    "💰 Economía con casino, robos, depósitos y ranking",
-    "🛡️ Moderación: antilink, antispam, antidelete, advertencias",
-    "📥 Descargas con yt-dlp + scraper propio",
-    "🤖 IA de Beerus sin clave de API",
-    "🗄️ Sesión y datos en SQLite",
-    "🧩 Verificación y mapa de dependencias incluidos",
-  ],
-};
-```
-
-<div align="center">
-
-<table>
-<tr>
-<td align="center" width="22%">
-  <img src="https://img.shields.io/badge/🎰-GACHA-FF4D6D?style=flat-square&labelColor=0d0d0d" width="100%"/>
-  <br><sub><b>Cartas y colección</b></sub>
-</td>
-<td align="center" width="22%">
-  <img src="https://img.shields.io/badge/🎮-JUEGOS-8B5CF6?style=flat-square&labelColor=3b1d8a" width="100%"/>
-  <br><sub><b>UNO · Póker · Trivia</b></sub>
-</td>
-<td align="center" width="22%">
-  <img src="https://img.shields.io/badge/🛡️-MODERACIÓN-EC4899?style=flat-square&labelColor=9F1239" width="100%"/>
-  <br><sub><b>Control de grupos</b></sub>
-</td>
-<td align="center" width="22%">
-  <img src="https://img.shields.io/badge/🤖-IA-10B981?style=flat-square&labelColor=065F46" width="100%"/>
-  <br><sub><b>Beerus conversacional</b></sub>
-</td>
-</tr>
-</table>
-
-</div>
-
----
-
-<div align="center">
-
-## 🌟 Características
-
-</div>
-
-### 🎰 Gacha Anime
+### Gacha anime
 
 - **Tiradas** con rarezas, valores y probabilidades reales.
 
   | Rareza | Base | Con garantía | Valor |
   |:---|---:|---:|---:|
-  | ⚪ Común | 62,60 % | 58,25 % | 15 🪙 |
-  | 🔵 Raro | 28,00 % | 26,23 % | 45 🪙 |
-  | 🟣 Épico | 8,00 % | 12,72 % | 150 🪙 |
-  | 🟡 Legendario | 1,25 % | 2,50 % | 600 🪙 |
-  | 🔴 Mítico | 0,15 % | 0,30 % | 2500 🪙 |
+  | Común | 62,60 % | 58,25 % | 15 |
+  | Raro | 28,00 % | 26,23 % | 45 |
+  | Épico | 8,00 % | 12,72 % | 150 |
+  | Legendario | 1,25 % | 2,50 % | 600 |
+  | Mítico | 0,15 % | 0,30 % | 2500 |
 
-- **Dos garantías** al estilo gacha real: épico o mejor cada 10 tiradas sin uno, y
-  legendario o mítico garantizado en la 90 sin ninguno (con subida gradual desde la 60).
-  Los dos contadores se ven en `.gacha stats`.
-- **Rareza por popularidad, serie e importancia**: el score (0-100) mezcla **55 %
-  favoritos del personaje + 20 % popularidad de la serie + 25 % peso del personaje
-  dentro de su reparto** (sus favoritos contra los del más querido de esa misma
-  serie). Los dos primeros van en escala **logarítmica** (`20·log10`), porque los
-  favoritos van de 50 a 40.000 y la popularidad de 1.000 a 900.000.
-  Así un secundario de una serie enorme ya no nace mítico solo por su serie, y un
-  protagonista de una serie de nicho pesa más que un extra de su mismo reparto.
-- **Cortes medidos, no a ojo**: son los cuantiles del pool alcanzable de AniList
-  (5.000 personajes) — mítico ≥85 · legendario ≥79 · épico ≥71 · raro ≥61. El
-  reparto queda **1 / 3 / 9 / 27 / 59 %** del pool: 47 míticos · 142 legendarios ·
-  427 épicos · 1.281 raros · 2.845 comunes.
-- **Roster y tasa de tirada son cosas distintas**: que el 1 % del pool sea mítico
-  y el sorteo dé mítico el 0,15 % es lo normal en un gacha real (los 5★ de un
-  gacha comercial andan en 0,6 % de tirada y son el 30-40 % del roster). Así una
-  tirada alta nunca repite las mismas 11 caras.
+- **Dos garantías** al estilo gacha real: épico o mejor cada 10 tiradas sin uno, y legendario o mítico garantizado en la 90 sin ninguno, con subida gradual desde la 60. Los dos contadores se ven en `.gacha stats`.
+- **Rareza por popularidad, serie e importancia**: el score (0-100) mezcla 55 % favoritos del personaje, 20 % popularidad de la serie y 25 % peso del personaje dentro de su reparto. Los dos primeros van en escala logarítmica (`20·log10`), porque los favoritos van de 50 a 40.000 y la popularidad de 1.000 a 900.000. Así un secundario de una serie enorme no nace mítico solo por su serie, y un protagonista de una serie de nicho pesa más que un extra de su mismo reparto.
+- **Cortes medidos, no a ojo**: son los cuantiles del pool alcanzable de AniList (5.000 personajes): mítico ≥85, legendario ≥79, épico ≥71, raro ≥61. El reparto queda 1 / 3 / 9 / 27 / 59 % del pool: 47 míticos, 142 legendarios, 427 épicos, 1.281 raros y 2.845 comunes.
+- **Roster y tasa de tirada son cosas distintas**: que el 1 % del pool sea mítico y el sorteo dé mítico el 0,15 % es lo normal en un gacha real (los 5★ de un gacha comercial andan en 0,6 % de tirada y son el 30-40 % del roster). Así una tirada alta nunca repite las mismas 11 caras.
 - **Colección y harem** por usuario, con tabla de valor y favoritos.
 - **Mercado**: vender, intercambiar, regalar y reclamar cartas.
-- **Catálogo externo**: los personajes y series se resuelven contra **AniList** y las
-  wikis de **Fandom**, con caché en `data/personajes/`.
+- **Catálogo externo**: los personajes y series se resuelven contra AniList y las wikis de Fandom, con caché en `data/personajes/`.
 - **Imagen de carta propia** por personaje (`.setcardimage`).
-- **Retratos**: prefiere arte grande y descarta basura (validado en `npm test`).
+- **Retratos**: prefiere arte grande y descarta basura. La validación corre en `npm test`.
 
-### 💰 Economía
+### Economía
 
 - Monedas, XP y niveles con ranking por grupo y global.
 - `daily`, `work`, `rob`, `pay`, `deposit`, `withdraw`, `crime`.
 - **Casino**: slots, coinflip y apuestas. **Ruleta** y **póker** mueven la misma economía.
-- Todo con historial (`economia_log`) para auditar movimientos raros.
+- Todo queda en `economia_log`, para auditar movimientos raros.
 
-### 🃏 Juegos
+### Juegos
 
 - **UNO** completo con reglas, turnos y validación de jugadas.
 - **Póker Texas hold'em** con mesas, botes y apuestas.
 - Ahorcado, ta-te-ti, adivinar el número, sopa de letras, verdad o reto.
-- Las jugadas se entregan **por privado** cuando el juego lo pide (`lib/privado.js`),
-  resolviendo el LID del jugador a número real.
+- Las jugadas se entregan **por privado** cuando el juego lo pide (`lib/privado.js`), resolviendo el LID del jugador a número real.
 
-### 🛡️ Grupos y Moderación
+### Grupos y moderación
 
 - Ban, kick, promote, demote, mute, `hidetag`, encuestas, invitaciones.
 - **Antilink** con whitelist y acción configurable (kick o aviso).
 - **Antispam**, **antidelete** y **antipalabras**.
 - **Advertencias** con límite configurable y acciones automáticas.
 - **Bienvenidas y despedidas** configurables con imagen.
-- **Modos por chat**: `/bot`, `/economia`, `/gacha`, `/onlyadmin`, `/autoread`,
-  `/autoreact`, `/nsfw` — cada uno se prende y apaga sin reiniciar.
+- **Modos por chat**: `/bot`, `/economia`, `/gacha`, `/onlyadmin`, `/autoread`, `/autoreact`, `/nsfw`. Cada uno se prende y apaga sin reiniciar.
 
-### 📥 Descargas y Multimedia
+### Descargas y multimedia
 
-- **yt-dlp** para YouTube, TikTok, Instagram y Facebook. El binario se descarga solo la
-  primera vez en `data/yt-dlp/`.
+- **yt-dlp** para YouTube, TikTok, Instagram y Facebook. El binario se descarga solo la primera vez en `data/yt-dlp/`.
 - **Scraper propio** para MediaFire y Google Drive, que yt-dlp no cubre.
 - Pinterest, Pixiv, Spotify, igstory, cuevana, búsqueda de TikTok.
-- Stickers estáticos y animados, stickers de vídeo, `toimg`, audio, efectos, QR, remini.
+- Stickers estáticos y animados, stickers de vídeo, `toimg`, `tovideo`, audio, efectos, QR, remini.
 
-### 🌐 Internet y Utilidades
+### Internet y utilidades
 
 - Búsqueda web, Wikipedia, clima, traducción, letras, IP, acortador, Pokedex.
 - Lectura de URLs con preview (título, descripción, imagen).
 - Calculadora, contador de mensajes, perfiles, cumpleaños, matrimonios, `ship`.
 
----
+### Sub-bots
 
-<div align="center">
+`/code` vincula un número como bot propio. Cada sub-bot abre su sesión en `data/subbots/<numero>/`, con su reconexión y su límite de mensajes de WhatsApp, y responde a los mismos comandos. Los sub-bots guardados vuelven solos al reiniciar. `/code list` los muestra y `/code del <numero>` borra uno.
 
-## 🤖 IA de Beerus
+## IA de Beerus
 
-<img src="https://readme-typing-svg.herokuapp.com?font=Orbitron&weight=900&size=24&pause=1000&color=FF4D6D&center=true&vCenter=true&width=700&lines=🤖+IA+DE+BEERUS;🐱+El+Dios+de+la+Destrucción+en+tu+grupo;⚡+Sin+clave+de+API+•+Memoria+por+chat" alt="IA" />
-
-<br>
-
-![No Key](https://img.shields.io/badge/🔑-SIN_CLAVE_DE_API-00E0A4?style=for-the-badge&labelColor=0d0d0d)
-![Cascada](https://img.shields.io/badge/🔁-3_PROVEEDORES_EN_CASCADA-8B5CF6?style=for-the-badge&labelColor=3b1d8a)
-![Memoria](https://img.shields.io/badge/🧠-MEMORIA_POR_CHAT-FF6B9D?style=for-the-badge&labelColor=3d0a20)
-![Gemini](https://img.shields.io/badge/✨-GEMINI_OPCIONAL-4CC9F0?style=for-the-badge&labelColor=0b3a4a)
-
-</div>
-
-```js
-const IA = {
-  activacion:   "/ia <texto>  ·  o mencionar al bot",
-  personalidad: "Beerus — soberbio, perezoso, fanático del pudín",
-  memoria:      "contexto por chat, se borra con /ia nueva",
-  proveedores:  ["ch.at (GPT-4o)", "llm7.io", "Pollinations"],
-  extra:        "Gemini AI Studio si el dueño guarda su clave",
-  responde:     "en el idioma del chat, en formato WhatsApp",
-};
-```
+Personalidad de Beerus: soberbio, perezoso, fanático del pudín. Responde en el idioma del chat y en formato WhatsApp, con memoria por chat.
 
 | Acción | Cómo |
 |:---|:---|
@@ -286,80 +110,50 @@ const IA = {
 | Ver estado del proveedor | `/ia estado` |
 | Guardar clave de Gemini (solo dueño) | `/ia clave <API_KEY>` |
 
-> [!NOTE]
-> Los tres proveedores gratuitos no piden cuenta ni clave. Gemini es opcional y solo
-> mejora la latencia; sin clave el bot funciona igual.
+Los tres proveedores gratuitos no piden cuenta ni clave. Gemini es opcional y solo mejora la latencia; sin clave el bot funciona igual.
 
----
-
-<div align="center">
-
-## 🎮 Juegos Disponibles
-
-</div>
+## Juegos disponibles
 
 | Juego | Descripción |
 |:------|:------------|
-| ![UNO](https://img.shields.io/badge/🃏-UNO-FF4D6D?style=for-the-badge) | Juego completo por turnos, con reglas y validación |
-| ![Poker](https://img.shields.io/badge/♠️-Póker-10B981?style=for-the-badge) | Texas hold'em con mesas y botes |
-| ![Ahorcado](https://img.shields.io/badge/🔤-Ahorcado-FF4500?style=for-the-badge) | Adivina la palabra letra por letra |
-| ![Tateti](https://img.shields.io/badge/❌⭕-Ta--te--ti-8A2BE2?style=for-the-badge) | Tres en línea |
-| ![Adivinar](https://img.shields.io/badge/🔢-Adivinar-1E90FF?style=for-the-badge) | Adivina el número secreto |
-| ![Sopa](https://img.shields.io/badge/🔎-Sopa%20de%20letras-32CD32?style=for-the-badge) | Encuentra las palabras escondidas |
-| ![Ruleta](https://img.shields.io/badge/🎡-Ruleta-FFD700?style=for-the-badge) | Gira y apuesta |
-| ![Casino](https://img.shields.io/badge/🎰-Slots%20%2F%20Coinflip-A52A2A?style=for-the-badge) | Tragamonedas y cara o cruz |
-| ![ToD](https://img.shields.io/badge/😈-Verdad%20o%20Reto-FF69B4?style=for-the-badge) | El clásico de grupo |
+| UNO | Juego completo por turnos, con reglas y validación |
+| Póker | Texas hold'em con mesas y botes |
+| Ahorcado | Adivina la palabra letra por letra |
+| Ta-te-ti | Tres en línea |
+| Adivinar | Adivina el número secreto |
+| Sopa de letras | Encuentra las palabras escondidas |
+| Ruleta | Gira y apuesta |
+| Slots / Coinflip | Tragamonedas y cara o cruz |
+| Verdad o reto | El clásico de grupo |
 
----
+## Seguridad y sesión
 
-<div align="center">
-
-## 🔐 Seguridad y Sesión
-
-</div>
-
-- **No hay servidor central**: el bot corre en tu máquina o tu hosting y nada sale de ahí
-  salvo las peticiones que cada comando necesita (descargas, clima, IA).
-- **La sesión es tuya**: `auth_info/` guarda las llaves de WhatsApp en SQLite y está en
-  `.gitignore`. Nunca se sube al repositorio.
-- **Una instancia por sesión**: `lib/instancia.js` toma un bloqueo. Un segundo proceso con
-  la misma sesión avisa en vez de corromper las llaves.
+- **No hay servidor central**: el bot corre en tu máquina o tu hosting y nada sale de ahí salvo las peticiones que cada comando necesita (descargas, clima, IA).
+- **La sesión es tuya**: `auth_info/` guarda las llaves de WhatsApp en SQLite y está en `.gitignore`. Nunca se sube al repositorio.
+- **Una instancia por sesión**: `lib/instancia.js` toma un bloqueo. Un segundo proceso con la misma sesión avisa en vez de corromper las llaves.
 - **Escrituras atómicas**: una transacción por lote en lugar de 1400 archivos sueltos.
-- **Actualizador apagado por defecto**: ejecuta `git merge` y `npm install` del remoto,
-  así que viene desactivado. Se activa a mano en `config.js` o con `--update`.
-- **Sin telemetría**: no hay analytics, ni ping a servidores propios, ni nada parecido.
+- **Actualizador apagado por defecto**: ejecuta `git merge` y `npm install` del remoto, así que viene desactivado. Se activa a mano en `config.js` o con `--update`.
+- **Sin telemetría**: no hay analytics ni ping a servidores propios.
 
-> [!TIP]
-> Usá un número dedicado para el bot. Un número limpio y con uso tranquilo es más estable
-> que uno personal lleno de grupos.
+Usá un número dedicado para el bot. Un número limpio y con uso tranquilo es más estable que uno personal lleno de grupos.
 
----
-
-<div align="center">
-
-## 🚀 Instalación
+## Instalación
 
 Elegí tu plataforma y desplegá el acordeón.
 
-</div>
-
 <details open>
-<summary><b>🪟 Windows</b></summary>
+<summary><b>Windows</b></summary>
 
 <br>
 
-[![Node.js](https://img.shields.io/badge/Node.js-22.13%2B-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
-[![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://www.microsoft.com/windows)
-
-**Paso 1 — Instalar Node.js** desde **https://nodejs.org/** (LTS, 22.13 o superior).
-Marcá **"Add to PATH"** durante la instalación.
+**Paso 1: instalar Node.js** desde https://nodejs.org/ (LTS, 22.13 o superior). Marcá "Add to PATH" durante la instalación.
 
 ```bash
 node -v
 npm -v
 ```
 
-**Paso 2 — Instalar ffmpeg** (obligatorio: stickers de vídeo, `toimg`, audio):
+**Paso 2: instalar ffmpeg** (obligatorio para stickers de vídeo, `toimg` y audio):
 
 ```powershell
 winget install Gyan.FFmpeg
@@ -377,7 +171,7 @@ Comprobar que quedó en el `PATH` (cerrá y abrí la terminal):
 ffmpeg -version
 ```
 
-**Paso 3 — Clonar e instalar**
+**Paso 3: clonar e instalar**
 
 ```bash
 git clone https://github.com/Beerus-zv/Beerus-Bot-MD.git
@@ -385,13 +179,13 @@ cd Beerus-Bot-MD
 npm install
 ```
 
-**Paso 4 — Verificar** (no conecta a WhatsApp, no toca `data/`)
+**Paso 4: verificar** (no conecta a WhatsApp, no toca `data/`)
 
 ```bash
 npm test
 ```
 
-**Paso 5 — Arrancar**
+**Paso 5: arrancar**
 
 ```bash
 npm start
@@ -400,7 +194,7 @@ npm start
 **Errores comunes en Windows:**
 
 <details>
-<summary>❌ Error al instalar <code>sharp</code></summary>
+<summary>Error al instalar <code>sharp</code></summary>
 
 ```bash
 npm uninstall sharp
@@ -411,15 +205,14 @@ npm rebuild sharp
 </details>
 
 <details>
-<summary>❌ <code>FFMPEG_ERROR</code> en stickers o <code>toimg</code></summary>
+<summary><code>FFMPEG_ERROR</code> en stickers o <code>toimg</code></summary>
 
-ffmpeg no está en el `PATH`. Instalalo, cerrá la terminal y abrí una nueva. Verificá con
-`ffmpeg -version` **dentro de la misma terminal** donde corrés el bot.
+ffmpeg no está en el `PATH`. Instalalo, cerrá la terminal y abrí una nueva. Verificá con `ffmpeg -version` dentro de la misma terminal donde corrés el bot.
 
 </details>
 
 <details>
-<summary>❌ Error de permisos en npm (PowerShell)</summary>
+<summary>Error de permisos en npm (PowerShell)</summary>
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
@@ -428,22 +221,20 @@ Set-ExecutionPolicy -Scope Process Bypass
 </details>
 
 <details>
-<summary>❌ <code>node:sqlite</code> no existe</summary>
+<summary><code>node:sqlite</code> no existe</summary>
 
-Node es anterior a 22.13. Actualizá Node: `node:sqlite` es lo que guarda la sesión y los
-datos, no hay respaldo para versiones viejas.
+Node es anterior a 22.13. Actualizá Node: `node:sqlite` guarda la sesión y los datos, no hay respaldo para versiones viejas.
 
 </details>
 
 </details>
 
 <details>
-<summary><b>📱 Android (Termux)</b></summary>
+<summary><b>Android (Termux)</b></summary>
 
 <br>
 
-> [!TIP]
-> Instalá Termux desde **F-Droid** (no Play Store): https://f-droid.org/packages/com.termux/
+Instalá Termux desde F-Droid, no desde Play Store: https://f-droid.org/packages/com.termux/
 
 ```bash
 pkg update && pkg upgrade -y
@@ -471,14 +262,12 @@ rm -rf node_modules package-lock.json
 npm install
 ```
 
-> [!NOTE]
-> Termux suele traer Node actualizado; verificá con `node -v` que sea **22.13 o superior**
-> antes de instalar las dependencias.
+Termux suele traer Node actualizado. Verificá con `node -v` que sea 22.13 o superior antes de instalar las dependencias.
 
 </details>
 
 <details>
-<summary><b>🐧 Linux / macOS</b></summary>
+<summary><b>Linux / macOS</b></summary>
 
 <br>
 
@@ -513,7 +302,7 @@ node -v   # necesita 22.13 o superior
 </details>
 
 <details>
-<summary><b>☁️ Hosting con panel (Pterodactyl / similar)</b></summary>
+<summary><b>Hosting con panel (Pterodactyl o similar)</b></summary>
 
 <br>
 
@@ -521,25 +310,17 @@ node -v   # necesita 22.13 o superior
 2. Subir el repositorio o clonarlo desde la consola: `git clone <repo> .`
 3. Comando de arranque: `node iniciar.js` (o `npm start`).
 4. Instalar dependencias una primera vez: `npm install`.
-5. Abrir la consola: el bot pregunta **QR** o **código de 8 dígitos**.
+5. Abrir la consola: el bot pregunta QR o código de 8 dígitos.
 
-> [!IMPORTANT]
-> En paneles la consola suele ser limitada: para el código de emparejamiento cargá antes
-> tu número en `config.js` (`NUMERO_VINCULACION`) y usá `node index.js --code`.
+En paneles la consola suele ser limitada. Para el código de emparejamiento cargá antes tu número en `config.js` (`NUMERO_VINCULACION`) y usá `node index.js --code`.
 
 </details>
 
----
-
-<div align="center">
-
-## 🔗 Vincular WhatsApp
-
-</div>
+## Vincular WhatsApp
 
 La primera vez no hay sesión, así que el bot pregunta cómo vincular:
 
-```yaml
+```text
 1. Código QR
 2. Código de 8 dígitos
 ```
@@ -551,10 +332,9 @@ node index.js --qr      # QR en consola
 node index.js --code    # código de emparejamiento
 ```
 
-**QR** — WhatsApp → Dispositivos vinculados → Vincular un dispositivo → escanear.
+**QR**: WhatsApp → Dispositivos vinculados → Vincular un dispositivo → escanear.
 
-**Código** — WhatsApp → Dispositivos vinculados → Vincular con número de teléfono →
-introducir el código de 8 caracteres que muestra la consola.
+**Código**: WhatsApp → Dispositivos vinculados → Vincular con número de teléfono → introducir el código de 8 caracteres que muestra la consola.
 
 El número del bot se puede dejar fijo en `config.js`:
 
@@ -563,16 +343,9 @@ export const NUMERO_VINCULACION = '5215512345678'  // código de país, solo dí
 ```
 
 > [!WARNING]
-> Una sola instancia por sesión. Si el bot ya está corriendo, un segundo proceso no puede
-> usar `auth_info/`: el bloqueo de `lib/instancia.js` lo detecta y avisa.
+> Una sola instancia por sesión. Si el bot ya está corriendo, un segundo proceso no puede usar `auth_info/`: el bloqueo de `lib/instancia.js` lo detecta y avisa.
 
----
-
-<div align="center">
-
-## ⚙️ Configuración
-
-</div>
+## Configuración
 
 Todo vive en `config.js`, sin tocar el resto del código.
 
@@ -584,7 +357,7 @@ Todo vive en `config.js`, sin tocar el resto del código.
 | `RAMA_ACTUALIZACION` | `''` | Rama a seguir; vacío = la actual |
 | `NAVEGADOR_WA` | `'Firefox'` | Navegador en Dispositivos vinculados |
 | `AUTH_DIR` | `'auth_info'` | Carpeta de la sesión |
-| `METODO_VINCULACION` | `'preguntar'` | `preguntar` \| `qr` \| `codigo` |
+| `METODO_VINCULACION` | `'preguntar'` | `preguntar`, `qr` o `codigo` |
 | `NUMERO_VINCULACION` | `''` | Número para el código de emparejamiento |
 | `MENCIONES_BOT` | `['beerus']` | Palabras que activan al bot |
 | `RESPONDER_A_SI_MISMO` | `false` | Responde a sus propios mensajes |
@@ -631,34 +404,22 @@ node iniciar.js --no-update # arrancar sin actualizador
 /nsfw on|off            # contenido NSFW en este chat
 ```
 
----
-
-<div align="center">
-
-## 🔧 Requisitos del Sistema
-
-</div>
+## Requisitos del sistema
 
 | Componente | Versión | Descripción |
 |:-----------|:--------|:------------|
-| **Node.js** | 22.13+ | Obligatorio: usa `node:sqlite` |
-| **NPM** | 10+ | Viene con Node |
-| **FFmpeg** | Última | Multimedia, stickers de vídeo y audio |
-| **Git** | Opcional | Solo para el actualizador |
+| Node.js | 22.13+ | Obligatorio: usa `node:sqlite` |
+| NPM | 10+ | Viene con Node |
+| FFmpeg | Última | Multimedia, stickers de vídeo y audio |
+| Git | Opcional | Solo para el actualizador |
 
 | Recurso | Sugerido |
 |:-----------|:--------|
-| **RAM** | 512 MB mínimo · 1 GB recomendado |
-| **Almacenamiento** | 1.5 GB libres (dependencias + caché de cartas y banners) |
-| **Internet** | Necesaria para descargas, gacha, banners e IA |
+| RAM | 512 MB mínimo, 1 GB recomendado |
+| Almacenamiento | 1.5 GB libres (dependencias, caché de cartas y banners) |
+| Internet | Necesaria para descargas, gacha, banners e IA |
 
----
-
-<div align="center">
-
-## 🚀 Uso y Ejecución
-
-</div>
+## Uso y ejecución
 
 Prefijos aceptados: `.` `#` `/`
 
@@ -668,12 +429,9 @@ Prefijos aceptados: `.` `#` `/`
 /menu gacha
 ```
 
-El bot también responde cuando lo mencionan por su nombre (`beerus` por defecto), aunque el
-mensaje no lleve prefijo.
+El bot también responde cuando lo mencionan por su nombre (`beerus` por defecto), aunque el mensaje no lleve prefijo.
 
-`/menu` manda el menú completo en un solo mensaje; `/menu <categoría>` manda solo esa
-categoría. Cada comando tiene un nombre corto y el nombre largo del archivo sigue
-funcionando: `.waifuinfo` y `.winfo` hacen lo mismo.
+`/menu` manda el menú completo en un solo mensaje; `/menu <categoría>` manda solo esa categoría. Cada comando tiene un nombre corto y el nombre largo del archivo sigue funcionando: `.waifuinfo` y `.winfo` hacen lo mismo.
 
 **En producción, con PM2:**
 
@@ -684,84 +442,68 @@ pm2 logs BeerusBot
 pm2 save
 ```
 
----
+## Estructura del proyecto
 
-<div align="center">
-
-## 📁 Estructura del Proyecto
-
-</div>
-
-```
+```text
 Beerus-Bot-MD/
-├── 📁 commands/           155 comandos, un archivo por comando
-├── 📁 lib/                lógica compartida
-│   ├── loader.js              carga perezosa de comandos
-│   ├── arranque.js            caché de bytecode de V8
-│   ├── auth-state.js          sesión de WhatsApp en SQLite
-│   ├── grupo.js               metadata, admins, JIDs y LID
-│   ├── economia.js            monedas, XP y niveles
-│   ├── poker.js / uno.js      motores de juego
-│   ├── privado.js             entrega de jugadas por privado
-│   ├── descargas.js           yt-dlp + scraper propio
-│   ├── imagenes.js            gacha, retratos y caché
+├── commands/            177 comandos, un archivo por comando
+├── lib/                 lógica compartida
+│   ├── loader.js            carga perezosa de comandos
+│   ├── arranque.js          caché de bytecode de V8
+│   ├── auth-state.js        sesión de WhatsApp en SQLite
+│   ├── grupo.js             metadata, admins, JIDs y LID
+│   ├── sockets.js           registro de sockets vivos
+│   ├── subbot.js            sub-bots de /code
+│   ├── economia.js          monedas, XP y niveles
+│   ├── poker.js / uno.js    motores de juego
+│   ├── privado.js           entrega de jugadas por privado
+│   ├── descargas.js         yt-dlp + scraper propio
+│   ├── imagenes.js          gacha, retratos y caché
 │   ├── ia.js / ia-proveedores.js  IA de Beerus
-│   └── logger.js              logs legibles en consola
-├── 📁 database/
-│   └── db.js              esquema y consultas SQLite
-├── 📁 scripts/           mantenimiento: cartas, banners, rarezas, graphify
-├── 📁 assets/            arte local del bot
-├── 📁 data/              base de datos, caché y yt-dlp (no se sube)
-├── 📁 auth_info/         sesión de WhatsApp (no se sube)
-├── 📄 index.js           conexión, enrutado y registro de comandos
-├── 📄 iniciar.js         lanzador con actualizador opcional
-├── 📄 config.js          toda la configuración
-└── 📄 verify.mjs         verificación sin conectar (npm test)
+│   └── logger.js            logs legibles en consola
+├── database/
+│   └── db.js            esquema y consultas SQLite
+├── scripts/             mantenimiento: cartas, banners, rarezas, graphify
+├── assets/              arte local del bot
+├── data/                base de datos, caché y yt-dlp (no se sube)
+├── auth_info/           sesión de WhatsApp (no se sube)
+├── index.js             conexión, enrutado y registro de comandos
+├── iniciar.js           lanzador con actualizador opcional
+├── config.js            toda la configuración
+└── verify.mjs           verificación sin conectar (npm test)
 ```
 
-**Contrato de un comando** — cualquier archivo nuevo en `commands/`:
+**Contrato de un comando**: cualquier archivo nuevo en `commands/`:
 
 ```js
-// commands/ejemplo.js  →  se registra como /ejemplo
+// commands/ejemplo.js  ->  se registra como /ejemplo
 export default async ({ sock, jid, msg, args }) => {
   const texto = args.join(' ').trim() || 'sin argumentos'
   await sock.sendMessage(jid, { text: `Recibí: ${texto}` }, { quoted: msg })
 }
 ```
 
-El nombre del archivo es el nombre del comando. Los alias cortos viven en `lib/alias.js`,
-el registro en `index.js` y `lib/loader.js` solo resuelve la ruta y compila el archivo la
-primera vez que se invoca.
+El nombre del archivo es el nombre del comando. Los alias cortos viven en `lib/alias.js`, el registro en `index.js` y `lib/loader.js` solo resuelve la ruta y compila el archivo la primera vez que se invoca.
 
----
-
-<div align="center">
-
-## 🛠️ Scripts
-
-</div>
+## Scripts
 
 | Comando | Qué hace |
 |:--------|:---------|
 | `npm start` | Arranca con comprobación de actualización (`iniciar.js`) |
 | `npm run dev` | Arranca con `--watch`, sin actualizador |
 | `npm test` | Verificación completa sin conectar a WhatsApp |
+| `npm run verify` | Igual que `npm test`, con el aviso de API experimental apagado |
 | `npm run check` | Solo sintaxis de las entradas y de la capa de datos |
 | `npm run cartas` | Refresca las cartas del gacha |
 | `npm run banners` | Renueva los banners del menú |
 | `npm run rarezas` | Sincroniza rarezas con el catálogo externo |
 | `npm run graphify` | Genera el mapa de dependencias en `graphify-out/` |
 
-**Qué valida `npm test`** (`verify.mjs`): sintaxis · carga de los 155 comandos · registro
-sin referencias rotas ni claves duplicadas · alias del menú que existan de verdad ·
-categorías que solo listan comandos registrados · partición del menú en bloques que
-WhatsApp acepta (≤ 4096 caracteres) · creación del esquema SQLite en carpeta temporal ·
-club VIP · imagen de carta · interacciones con GIF · retratos del gacha · banners.
+**Qué valida `npm test`** (`verify.mjs`): sintaxis, carga de los 177 comandos, registro sin referencias rotas ni claves duplicadas, alias del menú que existan de verdad, categorías que solo listan comandos registrados, partición del menú en bloques que WhatsApp acepta (≤ 4096 caracteres), creación del esquema SQLite en carpeta temporal, club VIP, imagen de carta, interacciones con GIF, retratos del gacha y banners.
 
-**Mapa de dependencias** (`npm run graphify`) — escáner de imports propio, sin
-dependencias externas:
+**Mapa de dependencias** (`npm run graphify`), con escáner de imports propio y sin dependencias externas:
 
-```
+```text
 graphify-out/
 ├── index.html   visor interactivo: nodos, aristas, búsqueda, filtros por capa
 ├── GRAPH.md     índice textual: hubs, huérfanos, ciclos, listado por carpeta
@@ -774,57 +516,44 @@ Consulta puntual sin releer el código:
 node scripts/graphify.mjs query gacha
 ```
 
----
-
-<div align="center">
-
-## 🧩 Comandos
-
-</div>
+## Comandos
 
 Resumen por categoría. El listado real y actualizado sale siempre de `/menu`.
 
 | Categoría | Nº | Ejemplos |
 |:---|:--:|:---|
-| 🛠️ Generales | 8 | `ping` `menu` `help` `dado` `stickers` `stats` |
-| 👑 Administración de grupos | 49 | `group` `bot` `ban` `kick` `promote` `hidetag` `antilink` `welcome` `modos` |
-| 🎨 Multimedia | 8 | `sticker` `stickervideo` `video` `audio` `qr` `efecto` `toimg` |
-| 💰 Economía y casino | 12 | `daily` `work` `economy` `casino` `rob` `deposit` `withdraw` `leaderboard` `crime` |
-| 🎰 Gacha anime | 26 | `gacha` `c` `collection` `gachaboard` `claim` `give` `sell` `trade` |
-| 👑 VIP | 5 | `vip` `vipmenu` `vipbadge` `vipboost` `gachaclaim` |
-| 🃏 Juegos | 8 | `uno` `poker` `ahorcado` `tateti` `adivinar` `sopa` `truthordare` |
-| 🧰 Utilidades | 9 | `calcular` `topcount` `pfp` `dalle` `remini` `inspect` `traducir` |
-| 🌐 Internet | 12 | `buscar` `wiki` `clima` `letra` `ip` `acortar` `leerurl` `pokedex` |
-| 📥 Descargas | 15 | `descargar` `youtube` `tiktok` `instagram` `mediafire` `pixiv` `spotifysearch` |
-| 🎭 Entretenimiento | 10 | `truthordare` `ship` `compliment` `joke` `8ball` `curiosidad` |
-| ⭐ Personales | 3 | `notes` `afk` `history` |
-| 📖 Perfiles | 20 | `profile` `level` `marry` `divorce` `birthdays` `setbirth` |
-| 🤖 IA | 3 | `ia` `chatgpt` `gemini` |
-| 💞 Interacciones | 31 | `kiss` `hug` `slap` `pat` `dance` `cuddle` |
-| 🔞 NSFW *(off por defecto)* | 33 | `/nsfw on` para habilitar · `/r34` junta 3 boorus, 2 páginas cada uno, y no repite lo ya enviado |
+| Generales | 9 | `ping` `menu` `help` `dado` `stickers` `stats` |
+| Administración de grupos | 58 | `group` `bot` `ban` `kick` `promote` `hidetag` `antilink` `welcome` `modos` |
+| Multimedia | 9 | `sticker` `stickervideo` `stickeraudio` `video` `audio` `qr` `efecto` `toimg` `tovideo` |
+| Economía y casino | 18 | `daily` `work` `economy` `casino` `rob` `deposit` `withdraw` `leaderboard` `crime` |
+| RPG | 12 | `rpg` `hunt` `mine` `fish` `adventure` `dungeon` `heal` `shop` `inventory` |
+| Gacha anime | 26 | `gacha` `c` `collection` `gachaboard` `claim` `give` `sell` `trade` |
+| VIP | 5 | `vip` `vipmenu` `vipbadge` `vipboost` `gachaclaim` |
+| Juegos | 8 | `uno` `poker` `ahorcado` `tateti` `adivinar` `sopa` `truthordare` |
+| Utilidades | 13 | `calcular` `toimg` `tovideo` `pfp` `topcount` `dalle` `remini` `inspect` `traducir` |
+| Internet | 12 | `buscar` `wiki` `clima` `letra` `ip` `acortar` `leerurl` `pokedex` |
+| Descargas | 19 | `descargar` `youtube` `tiktok` `instagram` `mediafire` `pixiv` `spotifysearch` |
+| Entretenimiento | 10 | `truthordare` `ship` `compliment` `joke` `8ball` `curiosidad` |
+| Personales | 3 | `notes` `afk` `history` |
+| Perfiles | 21 | `profile` `level` `marry` `divorce` `birthdays` `setbirth` |
+| Socket y configuración | 16 | `socket` `bots` `code` `prefix` `self` `join` `logout` `setbotname` |
+| IA | 3 | `ia` `chatgpt` `gemini` |
+| Interacciones | 31 | `kiss` `hug` `slap` `pat` `dance` `cuddle` |
+| NSFW (off por defecto) | 38 | `/nsfw on` para habilitar. `/r34` junta 3 boorus, 2 páginas cada uno, y no repite lo ya enviado |
 
----
+## Sistema de actualización
 
-<div align="center">
+El actualizador usa git y corre antes de cargar el bot, así que `index.js` arranca ya con el código nuevo:
 
-## ⚡ Sistema de Actualización
+1. `git fetch` del repositorio remoto.
+2. `git pull --ff-only` si hay commits nuevos.
+3. `npm install` si cambió `package.json` o `package-lock.json`.
+4. Arranca el bot.
 
-</div>
-
-El actualizador usa **git** y corre antes de cargar el bot, así que `index.js` arranca ya
-con el código nuevo:
-
-1. 🔄 `git fetch` del repositorio remoto
-2. 📥 `git pull --ff-only` si hay commits nuevos
-3. 📦 `npm install` si cambió `package.json` o `package-lock.json`
-4. 🐱 Arranca el bot
-
-Nunca pisa trabajo local: si hay cambios sin guardar en archivos versionados, o si la rama
-local divergió, se queda quieto y avisa.
+Nunca pisa trabajo local: si hay cambios sin guardar en archivos versionados, o si la rama local divergió, se queda quieto y avisa.
 
 > [!WARNING]
-> El actualizador ejecuta código del repositorio remoto sin que lo revises, por eso viene
-> **apagado** (`AUTO_ACTUALIZAR = false`). Activalo solo si controlás el remoto.
+> El actualizador ejecuta código del repositorio remoto sin que lo revises, por eso viene apagado (`AUTO_ACTUALIZAR = false`). Activalo solo si controlás el remoto.
 
 **Actualizar a mano:**
 
@@ -834,16 +563,10 @@ npm install    # solo si cambió package.json
 npm start
 ```
 
----
-
-<div align="center">
-
-## ❓ Problemas Comunes
-
-</div>
+## Problemas comunes
 
 <details>
-<summary>❌ <code>FFMPEG_ERROR</code> o stickers que fallan</summary>
+<summary><code>FFMPEG_ERROR</code> o stickers que fallan</summary>
 
 <br>
 
@@ -853,13 +576,12 @@ ffmpeg no está en el `PATH`. Comprobar:
 ffmpeg -version
 ```
 
-Después de instalarlo hay que **cerrar y abrir la terminal** (o reiniciar el panel) para que
-el `PATH` nuevo se aplique al proceso del bot.
+Después de instalarlo hay que cerrar y abrir la terminal (o reiniciar el panel) para que el `PATH` nuevo se aplique al proceso del bot.
 
 </details>
 
 <details>
-<summary>❌ <code>node:sqlite</code> no existe</summary>
+<summary><code>node:sqlite</code> no existe</summary>
 
 <br>
 
@@ -869,23 +591,21 @@ Node es anterior a 22.13. Actualizar:
 node -v
 ```
 
-`node:sqlite` es el motor de la sesión y de la base de datos; no hay alternativa para
-versiones viejas.
+`node:sqlite` es el motor de la sesión y de la base de datos; no hay alternativa para versiones viejas.
 
 </details>
 
 <details>
-<summary>❌ El bot avisa que la sesión está en uso</summary>
+<summary>El bot avisa que la sesión está en uso</summary>
 
 <br>
 
-Hay otra instancia corriendo con el mismo `auth_info/`. Cerrar la otra antes de arrancar
-esta. En paneles, revisar que no haya un proceso duplicado.
+Hay otra instancia corriendo con el mismo `auth_info/`. Cerrar la otra antes de arrancar esta. En paneles, revisar que no haya un proceso duplicado.
 
 </details>
 
 <details>
-<summary>❌ Se cerró la sesión de WhatsApp</summary>
+<summary>Se cerró la sesión de WhatsApp</summary>
 
 <br>
 
@@ -899,7 +619,7 @@ Y vincular de nuevo.
 </details>
 
 <details>
-<summary>❌ Las descargas de YouTube fallan</summary>
+<summary>Las descargas de YouTube fallan</summary>
 
 <br>
 
@@ -913,17 +633,16 @@ npm start
 </details>
 
 <details>
-<summary>❌ El menú sale sin imagen</summary>
+<summary>El menú sale sin imagen</summary>
 
 <br>
 
-Sin internet usa `assets/beerus-banner.png`. Si tampoco aparece, revisar que
-`BANNER_LOCAL` apunte a un archivo existente y que `assets/` no se haya borrado.
+Sin internet usa `assets/beerus-banner.png`. Si tampoco aparece, revisar que `BANNER_LOCAL` apunte a un archivo existente y que `assets/` no se haya borrado.
 
 </details>
 
 <details>
-<summary>❌ Un comando no carga</summary>
+<summary>Un comando no carga</summary>
 
 <br>
 
@@ -936,7 +655,7 @@ npm test
 </details>
 
 <details>
-<summary>❌ <code>npm install</code> falla por conflicto de versiones</summary>
+<summary><code>npm install</code> falla por conflicto de versiones</summary>
 
 <br>
 
@@ -947,13 +666,7 @@ npm install
 
 </details>
 
----
-
-<div align="center">
-
-## 🤝 Contribuir
-
-</div>
+## Contribuir
 
 1. Fork del repositorio.
 2. Rama nueva: `git checkout -b feat/mi-comando`.
@@ -961,63 +674,22 @@ npm install
 4. `npm test` en verde antes de abrir el PR.
 5. PR con qué hace y cómo probarlo.
 
-Convención de commits: [`Conventional Commits`](https://www.conventionalcommits.org/)
-(`feat:`, `fix:`, `docs:`, `refactor:`, `chore:`).
+Convención de commits: [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, `refactor:`, `chore:`).
 
----
+## Creador
 
-<div align="center">
+**Beerus_zv**. Desarrollo, mantenimiento y arte del bot.
 
-## 👨‍💻 Creador
+[GitHub](https://github.com/Beerus-zv) · [Instagram](https://instagram.com/andresm_zv)
 
-</div>
+## Apoyar el proyecto
 
-<p align="center">
-  <b>Beerus_zv</b><br>
-  <sub>Desarrollo · mantenimiento · arte del bot</sub>
-</p>
+Si el bot te sirve, el proyecto se mantiene con donaciones: [PayPal](https://paypal.me/altozv).
 
-<p align="center">
-  <a href="https://github.com/Beerus-zv">
-    <img src="https://img.shields.io/badge/GitHub-Beerus--zv-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub"/>
-  </a>
-  <a href="https://instagram.com/andresm_zv">
-    <img src="https://img.shields.io/badge/Instagram-@andresm__zv-E4405F?style=for-the-badge&logo=instagram&logoColor=white" alt="Instagram"/>
-  </a>
-</p>
+- Dejar una estrella en el repositorio.
+- Reportar bugs con el log de la consola.
+- Mandar un PR con un comando nuevo.
 
----
+## Licencia
 
-<div align="center">
-
-## ❤️ Apoyar el Proyecto
-
-</div>
-
-Si el bot te sirve, el proyecto se mantiene con donaciones:
-
-<p align="center">
-  <a href="https://paypal.me/altozv">
-    <img src="https://img.shields.io/badge/💙%20PayPal-Donar-00457C?style=for-the-badge&logo=paypal&logoColor=white" alt="PayPal"/>
-  </a>
-</p>
-
-- ⭐ Dejar una **estrella** en el repositorio.
-- 🐞 Reportar bugs con el log de la consola.
-- 🔧 Mandar un PR con un comando nuevo.
-
----
-
-<div align="center">
-
-## 📜 Licencia
-
-**MIT** — usá, modificá y compartí. Ver [package.json](package.json).
-
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif">
-
-<br>
-
-<sub>Hecho con Baileys, SQLite y demasiado café. 🐱</sub>
-
-</div>
+MIT: usá, modificá y compartí. Ver [package.json](package.json).
