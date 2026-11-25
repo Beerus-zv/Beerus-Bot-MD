@@ -111,7 +111,7 @@ export function parchearBaileys(lib = carpetaBaileys()) {
       // responde con otro QR en vez de aceptar el login. Se reescribe a la
       // marca que si existe: `creds.account`.
       nombre: 'reparar condicion de registro con creds.registered',
-      ya: (t) => /if \(!creds\.me \|\| !creds\.account\) \{/.test(t),
+      ya: (t) => !/if \(!creds\.me \|\| !creds\.registered\) \{/.test(t),
       buscar: /if \(!creds\.me \|\| !creds\.registered\) \{/,
       reemplazo: 'if (!creds.me || !creds.account) {',
     },
