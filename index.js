@@ -1348,8 +1348,13 @@ const userSpamData = {}
         // Autoread: deja el chat sin contadores de no leídos
         marcarLeido(sock, msg)
 
-        // Quién envió el mensaje (en grupos viene en participant)
-        const sender = msg.key.fromMe ? sock.user?.id : msg.key.participant
+        // Quién envió el mensaje. En grupos viene en `participant`; en un
+        // privado ese campo no existe y el remitente es el propio chat: sin
+        // este respaldo `sender` quedaba undefined y toda consulta a SQLite
+        // que lo usaba como parámetro reventaba en silencio.
+        const sender = msg.key.fromMe
+          ? sock.user?.id || jid
+          : msg.key.participant || msg.key.participantAlt || jid
         const esGrupo = jid?.endsWith('@g.us')
 
         // Nombre del grupo para los logs (una vez; no frena el mensaje más de 1.5 s)
@@ -1664,17 +1669,26 @@ const userSpamData = {}
           }
 
           // ── Tarifa de oro por comando (categorías pagadas) ──
+          // Si la economía no se puede leer, el comando corre igual: antes un
+          // remitente sin JID tiraba una excepción acá y el mensaje del usuario
+          // se quedaba sin respuesta.
           const categoriaComando = categoriaDe(clave)
           if (CATEGORIAS_COSTO_ORO.has(categoriaComando)) {
-            const eco = obtenerEconomia(sender)
-            if (eco.monedas < COSTE_COMANDO_ORO) {
+            let eco = null
+            try {
+              eco = obtenerEconomia(sender)
+            } catch (err) {
+              log.error(`No pude leer la economía de ${sender}`, err)
+            }
+
+            if (eco && eco.monedas < COSTE_COMANDO_ORO) {
               await sock.sendMessage(jid, {
                 text: `🪙 No tienes suficiente oro. Necesitas *${COSTE_COMANDO_ORO}*, tienes *${eco.monedas}*.` ,
                 quoted: msg,
               })
               return
             }
-            restarMonedas(sender, COSTE_COMANDO_ORO, 'comando', `${prefijo}${clave}`)
+            if (eco) restarMonedas(sender, COSTE_COMANDO_ORO, 'comando', `${prefijo}${clave}`)
           }
 
           // Todos los comandos reciben el mismo contexto
