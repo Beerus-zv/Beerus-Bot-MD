@@ -835,12 +835,13 @@ const commands = {
   // ── Configuración del socket (solo owner) ──
   socket: C.socket,
   bots: conSub(C.socket, 'bots'),
-  // Sub-bots: sesiones vinculadas desde el chat con /serbot
-  serbot: C.serbot,
-  subbot: C.serbot,
-  subbots: C.serbot,
-  misbots: C.serbot,
-  delbot: C.serbot,
+  // Sub-bots: sesiones vinculadas desde el chat con /code
+  code: C.code,
+  serbot: C.code,
+  subbot: C.code,
+  subbots: C.code,
+  misbots: C.code,
+  delbot: C.code,
   sockets: conSub(C.socket, 'sockets'),
   join: conSub(C.socket, 'join'),
   unir: conSub(C.socket, 'join'),
