@@ -3,6 +3,11 @@
  * Va primero: la cache solo cubre los modulos que se compilan despues.
  */
 import './lib/arranque.js'
+// Los parches de vinculacion tienen que estar en disco ANTES de que se evalue
+// el paquete de Baileys: el modulo se aplica al importarse, y este import va
+// antes del de `@whiskeysockets/baileys` para eso. Cubre `npm start`,
+// `npm run dev` y un despliegue que solo hace git pull y reinicia.
+import './scripts/parche-baileys.mjs'
 import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,

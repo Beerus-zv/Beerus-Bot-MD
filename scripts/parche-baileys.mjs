@@ -2,7 +2,7 @@
  * Parches de vinculacion para @whiskeysockets/baileys 7.0.0-rc14.
  *
  * La ultima version publicada (7.0.0-rc14, 2026-07-29) tiene tres defectos que
- * rompen el codigo de vinculacion contra los servidores actuales de WhatsApp:
+ * rompen la vinculacion contra los servidores actuales de WhatsApp:
  *
  *   1. `link_code_pairing_nonce` viaja como el texto '0' (0x30). WhatsApp Web
  *      manda un unico byte nulo (0x00) y el telefono rechaza cualquier otra
@@ -19,11 +19,18 @@
  *      termine, asi que cualquier reconexion manda un login pasivo con
  *      credenciales que el servidor nunca confirmo y contesta 401.
  *
- * Los tres estan corregidos en el repositorio de Baileys pero no en una
- * version publicada, asi que se aplican sobre el paquete instalado.
+ * El tercero necesita una marca que en rc14 si exista. La version anterior de
+ * este script usaba `creds.registered`, y ahi esta el bucle: en Baileys 7 nada
+ * pone `registered` en true, asi que `!creds.registered` siempre es verdadero y
+ * CADA socket manda un registro. El servidor contesta `pair-device` (un QR
+ * nuevo) aunque la vinculacion ya se hubiera completado: QR, 515, QR, 515.
+ * La marca real es `creds.account`, que `configureSuccessfulPairing` escribe
+ * junto con `me`, `signalIdentities` y `platform`.
  *
- * Corre solo en `npm install` (postinstall) y al arrancar el bot. Es
- * idempotente: si ya esta aplicado no toca nada.
+ * Corre en `npm install` (postinstall) y al importarlo desde `iniciar.js`, asi
+ * un despliegue que solo hace git pull y reinicia tambien queda corregido. Es
+ * idempotente y ademas REPARA el defecto de la version anterior del script, que
+ * ya quedo escrito en el node_modules de las instalaciones existentes.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -98,10 +105,21 @@ export function parchearBaileys(lib = carpetaBaileys()) {
       reemplazo: '$1Buffer.from([0])',
     },
     {
-      nombre: 'registro mientras no este registrado',
-      ya: (t) => /if \(!creds\.me \|\| !creds\.registered\)/.test(t),
+      // Reparacion: la version anterior del script dejo escrito
+      // `!creds.me || !creds.registered`, y en rc14 `registered` nunca pasa a
+      // true. Eso fuerza un registro nuevo en cada socket, y el servidor
+      // responde con otro QR en vez de aceptar el login. Se reescribe a la
+      // marca que si existe: `creds.account`.
+      nombre: 'reparar condicion de registro con creds.registered',
+      ya: (t) => /if \(!creds\.me \|\| !creds\.account\) \{/.test(t),
+      buscar: /if \(!creds\.me \|\| !creds\.registered\) \{/,
+      reemplazo: 'if (!creds.me || !creds.account) {',
+    },
+    {
+      nombre: 'registro solo mientras no haya cuenta vinculada',
+      ya: (t) => /if \(!creds\.me \|\| !creds\.account\) \{/.test(t),
       buscar: /if \(!creds\.me\) \{/,
-      reemplazo: 'if (!creds.me || !creds.registered) {',
+      reemplazo: 'if (!creds.me || !creds.account) {',
     },
   ])
 
@@ -118,8 +136,20 @@ export function parchearBaileys(lib = carpetaBaileys()) {
   return aplicados
 }
 
-// Ejecutado directo (postinstall o arranque): aplica y sale.
+// Se aplica al importar (iniciar.js lo hace antes de cargar index.js) y cuando
+// se ejecuta directo (postinstall). Nunca lanza: un parche que no encaja no
+// puede tumbar el arranque.
+let aplicados = 0
+try {
+  aplicados = parchearBaileys()
+} catch (err) {
+  console.warn(`[parche] baileys: ${err?.message || err}`)
+}
+
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  const total = parchearBaileys()
-  console.log(total ? `[parche] baileys: ${total} correccion(es) aplicada(s)` : '[parche] baileys: ya estaba al dia')
+  console.log(
+    aplicados
+      ? `[parche] baileys: ${aplicados} correccion(es) aplicada(s)`
+      : '[parche] baileys: ya estaba al dia'
+  )
 }
