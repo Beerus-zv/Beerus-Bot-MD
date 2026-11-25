@@ -19,7 +19,7 @@ import {
   eliminarSubBot,
   listarSubBots,
 } from '../lib/subbot.js'
-import { normalizarNumero } from '../lib/vinculacion.js'
+import { normalizarNumero, formatearCodigo } from '../lib/vinculacion.js'
 
 const AYUDA =
   '*SUB-BOTS*\n\n' +
@@ -207,7 +207,7 @@ export default async ({ sock, jid, msg, args, sender }) => {
           `En el WhatsApp de ese numero:\n` +
           `Ajustes > Dispositivos vinculados > Vincular un dispositivo\n` +
           `> Vincular con numero de telefono.\n\n` +
-          `_El codigo caduca en unos minutos. Si vence, repite_ \`/code\`_._`
+          `_El codigo caduca en ~1 minuto. Si vence, repite_ \`/code\`_._`
       )
     },
     alError: async (error, num) => {
@@ -234,11 +234,24 @@ export default async ({ sock, jid, msg, args, sender }) => {
 
   if (!codigoEntregado && resultado.codigo) {
     return responder(
-      `*Codigo de vinculacion* — ${numero}\n\n*${resultado.codigo}*`
+      `*Codigo de vinculacion* — ${numero}\n\n` +
+        `*${formatearCodigo(resultado.codigo)}*\n\n` +
+        `En el WhatsApp de ese numero:\n` +
+        `Ajustes > Dispositivos vinculados > Vincular un dispositivo\n` +
+        `> Vincular con numero de telefono.\n\n` +
+        `_El codigo caduca en ~1 minuto. Si vence, repite_ \`/code\`_._`
     )
   }
 
   // El codigo llega por el callback del socket; si no, el aviso de arriba
-  // ya explico que se estaba generando.
+  // ya explico que se estaba generando. Un socket que todavia abre tarda
+  // unos segundos: sin este aviso el comando parecia no hacer nada.
+  if (!codigoEntregado) {
+    return responder(
+      `El socket de *${numero}* esta abriendo; el codigo llega en unos segundos.\n` +
+        `_Si no aparece, repite_ \`/code\`_._`
+    )
+  }
+
   return null
 }

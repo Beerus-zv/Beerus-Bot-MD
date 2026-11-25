@@ -31,7 +31,7 @@ import { useSqliteAuthState } from './lib/auth-state.js'
 import { COMANDOS_VIP, esVip, jidsDe } from './lib/vip.js'
 import { prefijosBot, modoPrivado, nombreBot } from './lib/ajustes-bot.js'
 import { registrarSocket, quitarSocket } from './lib/sockets.js'
-import { configurarSubBots, restaurarSubBots } from './lib/subbot.js'
+import { configurarSubBots, restaurarSubBots, fijarVersionWhatsApp } from './lib/subbot.js'
 
 // ── Tarifa de oro por comando (categorías pagadas) ──
 const COSTE_COMANDO_ORO = 10
@@ -1132,6 +1132,11 @@ async function startBot() {
 
   const { state, saveCreds, tieneSesion } = await obtenerAuthSesion()
   const version = await versionDeWhatsApp()
+
+  // Los sub-bots abren con la misma version que el principal: si el servidor
+  // de versiones no responde, un sub-bot no puede quedarse con una vieja y
+  // rechazar la vinculacion.
+  fijarVersionWhatsApp(version)
 
   // Si hay credenciales guardadas no se pregunta por el metodo de vinculacion
   const tieneSesionGuardada = tieneSesion
