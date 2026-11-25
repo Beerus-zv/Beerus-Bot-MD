@@ -5,12 +5,12 @@ import {
   descargarMedia,
   duracionDeBuffer,
   chunksWebp,
-  videoMiniatura,
-  enviarVideoConAudio,
+  stickerDesdeVideoInfo,
+  audioDesdeVideo,
   enviarSticker,
-  guardarAudioDeSticker,
+  enviarStickerConAudio,
 } from '../lib/multimedia.js'
-import { audioDeSticker, stickerAMp4 } from '../lib/sticker-video.js'
+import { audioDeSticker } from '../lib/sticker-video.js'
 
 const DURACION_POR_DEFECTO = 6
 const DURACION_MAXIMA = 10
@@ -32,15 +32,14 @@ function conLimite(promesa, ms, etiqueta) {
 }
 
 /**
- * Sticker con sonido en una sola burbuja.
+ * Sticker animado con su audio adentro, en un solo mensaje.
  *
- * WhatsApp no admite audio adentro de un sticker (el `Message` solo lleva un
- * medio por mensaje), así que la versión con sonido es un mp4 chico de 512:
- * se ve como una miniatura en movimiento y suena al tocarlo.
+ * El sonido va en `StickerMessage.audioMessage` (campo 26, el `oneof audio`
+ * del proto de WhatsApp), no como nota aparte.
  *
  * Uso:
  *   responde a un video o GIF con /stickeraudio [segundos]
- *   responde a un sticker con audio con /stickeraudio
+ *   responde a un sticker con /stickeraudio para re-firmarlo con su audio
  */
 export default async (ctx) => {
   const { sock, jid, msg } = ctx
@@ -71,10 +70,10 @@ async function manejar({ sock, jid, msg, args }) {
     return
   }
 
-  // Sticker: no hay audio que extraer del WebP, se busca el que ya tenia
-  // guardado y se reenvia con sonido. Sin audio sale igual, solo re-firmado.
+  // Sticker: no hay audio que extraer, se vuelve a firmar con los metadatos
+  // del bot y se le pega el audio que ya tenia.
   if (fuente.mensaje?.stickerMessage) {
-    await rehacerSticker({ sock, jid, msg, fuente: fuente.mensaje })
+    await rehacerStickerConAudio({ sock, jid, msg, fuente: fuente.mensaje })
     return
   }
 
@@ -104,7 +103,7 @@ async function manejar({ sock, jid, msg, args }) {
   }
 
   await sock.sendMessage(jid, {
-    text: `⏳ Sacando el sticker con audio del video (${duracion}s)...`,
+    text: `⏳ Sacando el sticker y el audio del video (${duracion}s)...`,
   })
 
   const buffer = await conLimite(
@@ -123,23 +122,61 @@ async function manejar({ sock, jid, msg, args }) {
 
   console.log(`[stickeraudio] video recibido (${(buffer.length / 1024).toFixed(0)} KB)`)
 
-  const { video, thumbnail, segundos } = await videoMiniatura(buffer, { duracion })
+  // El sticker manda el ritmo: si el clip se recorta para entrar en los
+  // 500 KB de WhatsApp, el audio tiene que cortarse igual o el cliente
+  // reproduce el sticker como GIF mudo.
+  const { buffer: sticker, duracion: duracionReal } = await stickerDesdeVideoInfo(buffer, { duracion })
 
   console.log(
-    `[stickeraudio] miniatura lista (${(video.length / 1024).toFixed(0)} KB, ${segundos}s)`
+    `[stickeraudio] sticker listo (${(sticker.length / 1024).toFixed(0)} KB, ${duracionReal}s)`
   )
 
-  await enviarVideoConAudio(sock, jid, video, { quoted: msg, segundos, thumbnail })
+  const audio = await audioDesdeVideo(buffer, { duracion: duracionReal }).catch((err) => {
+    console.warn('[stickeraudio] no pude extraer el audio:', err?.message)
+    return null
+  })
+
+  if (duracionReal < duracion) {
+    await sock.sendMessage(jid, {
+      text: `✂️ El video pesaba mucho para los 500 KB del sticker, así que quedó en ${duracionReal}s.`,
+    })
+  }
+
+  if (!audio) {
+    await enviarSticker(sock, jid, sticker, msg)
+    await sock.sendMessage(jid, {
+      text: '🔇 El video no trae pista de audio, asi que salio el sticker solo.',
+    })
+    return
+  }
+
+  console.log(
+    `[stickeraudio] audio listo (${(audio.buffer.length / 1024).toFixed(0)} KB, ${audio.segundos}s)`
+  )
+
+  try {
+    await enviarStickerConAudio(sock, jid, sticker, audio.buffer, {
+      quoted: msg,
+      segundos: audio.segundos,
+    })
+  } catch (err) {
+    // Si el cliente rechaza el campo 26, mejor el sticker solo que nada.
+    console.error('[stickeraudio] no pude adjuntar el audio al sticker:', err)
+    await enviarSticker(sock, jid, sticker, msg)
+    await sock.sendMessage(jid, {
+      text: '⚠️ WhatsApp rechazó el audio del sticker; salió el sticker solo.',
+    })
+  }
 }
 
 /**
- * Reenvía un sticker con su audio: si tiene sonido guardado sale como la
- * miniatura con audio; si no, sale el sticker con la firma nueva.
+ * Re-firma un sticker con los metadatos del bot y le vuelve a pegar su audio.
  *
- * `firmarSticker` descarta el EXIF viejo y escribe el nuevo, así que el
- * paquete sale siempre como Beerus Bot / Beerus_zv.
+ * `firmarSticker` descarta el EXIF viejo y escribe el nuevo, asi que el
+ * paquete sale siempre como Beerus Bot / Beerus_zv. El audio sale del guardado
+ * por hash o del campo 26; si no hay, el sticker sale igual, solo re-firmado.
  */
-async function rehacerSticker({ sock, jid, msg, fuente }) {
+async function rehacerStickerConAudio({ sock, jid, msg, fuente }) {
   const responder = (texto) => sock.sendMessage(jid, { text: texto, quoted: msg })
 
   const buffer = await conLimite(
@@ -176,19 +213,19 @@ async function rehacerSticker({ sock, jid, msg, fuente }) {
     return
   }
 
-  const { video, conAudio } = await stickerAMp4(sock, fuente, buffer, {
-    idSticker: contextoDeCita(msg)?.stanzaId ?? msg?.key?.id,
-  })
+  const segundos = await duracionDeBuffer(audio, 'ogg')
 
-  const segundos = (await duracionDeBuffer(audio, 'ogg')) ?? 3
+  try {
+    await enviarStickerConAudio(sock, jid, buffer, audio, {
+      quoted: msg,
+      segundos: segundos ?? undefined,
+    })
+  } catch (err) {
+    console.error('[stickeraudio] no pude adjuntar el audio al sticker:', err)
+    await enviarSticker(sock, jid, buffer, msg)
+    await responder('⚠️ WhatsApp rechazó el audio del sticker; salió con la firma nueva.')
+    return
+  }
 
-  await enviarVideoConAudio(sock, jid, video, { quoted: msg, segundos })
-
-  // El audio queda guardado con el hash del sticker original, para que otro
-  // comando (o un reenvío) lo vuelva a encontrar.
-  guardarAudioDeSticker(buffer, audio, msg?.key?.id)
-
-  console.log(
-    `[stickeraudio] sticker con audio enviado · ${origen} · ${segundos}s · ${conAudio ? 'con sonido' : 'sin sonido'}`
-  )
+  console.log(`[stickeraudio] sticker re-firmado · audio ${origen} · ${segundos ?? '?'}s`)
 }
