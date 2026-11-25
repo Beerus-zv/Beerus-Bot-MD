@@ -8,6 +8,10 @@ Bot de WhatsApp multi-dispositivo escrito sobre Baileys, con sesión y datos en 
 ![Node](https://img.shields.io/badge/node-22.13%2B-10B981?style=flat-square)
 ![Licencia](https://img.shields.io/badge/license-MIT-8B5CF6?style=flat-square)
 
+![Estrellas](https://img.shields.io/github/stars/Beerus-zv/Beerus-Bot-MD?style=social)
+![Forks](https://img.shields.io/github/forks/Beerus-zv/Beerus-Bot-MD?style=social)
+![Visitas](https://komarev.com/ghpvc/?username=Beerus-zv&label=Visitas&color=FF4D6D&style=for-the-badge)
+
 ## En números
 
 | Dato | Valor |
