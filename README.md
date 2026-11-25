@@ -412,6 +412,12 @@ node iniciar.js --no-update # arrancar sin actualizador
 | `GELBOORU_USER_ID` | Sobrescribe el `user_id` de Gelbooru |
 | `RULE34_API_KEY` | Sobrescribe la key de rule34.xxx de `config.js` |
 | `RULE34_USER_ID` | Sobrescribe el `user_id` de rule34.xxx |
+| `LOG_DEBUG=1` | Muestra las trazas internas (resultados de APIs, tamaños, campos de un proto) |
+| `NO_COLOR=1` | Apaga los colores de la consola (se apagan solos si no es una terminal) |
+| `FORCE_COLOR=1` | Fuerza los colores, útil cuando el hosting redirige la salida a un archivo |
+| `PINTEREST_MAX_VIDEO_MB` | Tope del video de un pin de Pinterest (por defecto 50) |
+
+**Formato de la consola:** cada línea lleva hora y tipo (`MSG` entrante, `CMD` comando, `OUT` enviado, `SEC` seguridad, `SYS` sistema, `WARN` aviso, `ERR` error, `SUB` sub-bot). Un comando abre con `┌` y cierra con `└` y su duración, así se sigue aunque el bot mande mensajes en el medio. Al arrancar se imprime una caja con el nombre, los prefijos, la versión de Node y la del bot.
 
 **Modos por chat** (`/modos` muestra el estado de todos):
 
