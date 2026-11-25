@@ -40,11 +40,11 @@ export default async ({ sock, jid, msg, args }) => {
     return
   }
 
-  // Duración opcional: /stickervideo 4  (segundos, máximo 10)
+  // Duración opcional: /stickervideo 10  (segundos, máximo 15)
   let duracion = 6
   const arg = Number(args?.[0])
   if (Number.isFinite(arg) && arg > 0) {
-    duracion = Math.min(Math.max(arg, 1), 10)
+    duracion = Math.min(Math.max(arg, 1), 15)
   }
 
   await sock.sendMessage(jid, {

@@ -11,7 +11,7 @@ import { log } from '../lib/logger.js'
 /**
  * Convierte una imagen o un video en un sticker de WhatsApp.
  * - Imagen: sticker estático WebP 512x512 (respuestas a un sticker también sirven)
- * - Video/GIF: sticker animado WebP 512x512 (máximo 10 segundos)
+ * - Video/GIF: sticker animado WebP 512x512 (máximo 15 segundos)
  * Uso: responde a una imagen, un video o un GIF con /sticker [duracion]
  */
 export default async ({ sock, jid, msg, args }) => {
@@ -35,11 +35,11 @@ export default async ({ sock, jid, msg, args }) => {
     return
   }
 
-  // Duración opcional para videos/GIFs: /sticker 4 (segundos, máximo 10)
+  // Duración opcional para videos/GIFs: /sticker 10 (segundos, máximo 15)
   let duracion = 6
   const arg = Number(args?.[0])
   if (Number.isFinite(arg) && arg > 0 && tipo === 'video') {
-    duracion = Math.min(Math.max(arg, 1), 10)
+    duracion = Math.min(Math.max(arg, 1), 15)
   }
 
   await sock.sendMessage(jid, {

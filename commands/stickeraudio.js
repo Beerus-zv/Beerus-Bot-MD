@@ -14,7 +14,11 @@ import { audioDeSticker } from '../lib/sticker-video.js'
 import { log } from '../lib/logger.js'
 
 const DURACION_POR_DEFECTO = 6
-const DURACION_MAXIMA = 10
+
+// Un sticker animado puede durar mas de 10 s: el limite real de WhatsApp es el
+// peso (500 KB), no el reloj. El motor baja fps, calidad y resolucion util
+// antes de recortar, asi que 15 s entran si el clip no tiene demasiado detalle.
+const DURACION_MAXIMA = 15
 
 // Una descarga colgada no puede dejar al usuario esperando para siempre: si
 // WhatsApp no entrega el archivo en este plazo, el comando responde con error.
@@ -96,7 +100,7 @@ async function manejar({ sock, jid, msg, args }) {
     return
   }
 
-  // Duración opcional: /stickeraudio 4  (segundos, máximo 10)
+  // Duración opcional: /stickeraudio 10  (segundos, máximo 15)
   let duracion = DURACION_POR_DEFECTO
   const arg = Number(args?.[0])
   if (Number.isFinite(arg) && arg > 0) {
@@ -138,8 +142,9 @@ async function manejar({ sock, jid, msg, args }) {
   })
 
   if (duracionReal < duracion) {
+    const segundos = Math.round(duracionReal * 10) / 10
     await sock.sendMessage(jid, {
-      text: `✂️ El video pesaba mucho para los 500 KB del sticker, así que quedó en ${duracionReal}s.`,
+      text: `✂️ El sticker quedó en ${segundos}s: el video duraba menos o no entraba en los 500 KB de WhatsApp.`,
     })
   }
 
