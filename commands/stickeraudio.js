@@ -2,7 +2,7 @@ import {
   resolverFuenteMedia,
   detectarTipoMedia,
   descargarMedia,
-  stickerDesdeVideo,
+  stickerDesdeVideoInfo,
   audioDesdeVideo,
   enviarSticker,
   enviarStickerConAudio,
@@ -60,16 +60,18 @@ export default async ({ sock, jid, msg, args }) => {
   try {
     const buffer = await descargarMedia(sock, fuente.mensaje)
 
-    // Sticker y audio salen del mismo buffer: en paralelo para no sumar esperas
-    const [stickerRes, audioRes] = await Promise.allSettled([
-      stickerDesdeVideo(buffer, { duracion }),
-      audioDesdeVideo(buffer, { duracion }),
-    ])
+    // El sticker manda el ritmo: si el clip se recorta para entrar en los
+    // 500 KB de WhatsApp, el audio tiene que cortarse igual o Android rechaza
+    // el sonido por no cuadrar con el `seconds` del mensaje.
+    const { buffer: sticker, duracion: duracionReal } = await stickerDesdeVideoInfo(buffer, { duracion })
 
-    if (stickerRes.status === 'rejected') throw stickerRes.reason
+    const audio = await audioDesdeVideo(buffer, { duracion: duracionReal }).catch(() => null)
 
-    const sticker = stickerRes.value
-    const audio = audioRes.status === 'fulfilled' ? audioRes.value : null
+    if (duracionReal < duracion) {
+      await sock.sendMessage(jid, {
+        text: `✂️ El video pesaba mucho para los 500 KB del sticker, así que quedó en ${duracionReal}s.`,
+      })
+    }
 
     if (!audio) {
       await enviarSticker(sock, jid, sticker, msg)
