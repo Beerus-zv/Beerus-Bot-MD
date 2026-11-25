@@ -188,19 +188,49 @@ async function bajarConTope(url, limite) {
   return buffer
 }
 
-/** Baja una página con user-agent de navegador; devuelve también la url final */
+/** Tope de saltos al seguir un enlace corto; Pinterest usa tres o cuatro */
+const MAX_SALTOS = 6
+
+/**
+ * Baja una página con user-agent de navegador siguiendo las redirecciones a
+ * mano, y devuelve la cadena completa además de la url final.
+ *
+ * La cadena importa: `pin.it/abc` pasa por `api.pinterest.com/url_shortener/…`
+ * y por `/pin/<id>/sent/`, y desde una IP de datacenter Pinterest a veces
+ * cierra la cadena en la portada. Con `redirect: 'follow'` el id del pin se
+ * perdía en ese último salto y el comando decía que el enlace estaba caducado
+ * aunque el pin existiera. Guardando cada salto, el id se lee del que lo trae.
+ */
 async function bajarHtml(url, timeout = 30000) {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': UA, Accept: 'text/html', 'Accept-Language': 'es-ES,es;q=0.9' },
-    redirect: 'follow',
-    signal: AbortSignal.timeout(timeout),
-  })
-  return {
-    ok: res.ok,
-    status: res.status,
-    final: res.url || url,
-    html: res.ok ? await res.text() : '',
+  let actual = url
+  const cadena = [url]
+  for (let salto = 0; salto <= MAX_SALTOS; salto++) {
+    const res = await fetch(actual, {
+      headers: { 'User-Agent': UA, Accept: 'text/html', 'Accept-Language': 'es-ES,es;q=0.9' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(timeout),
+    })
+
+    const destino = res.headers.get('location')
+    if (res.status >= 300 && res.status < 400 && destino) {
+      try {
+        actual = new URL(destino, actual).href
+      } catch {
+        return { ok: false, status: res.status, final: actual, html: '', cadena }
+      }
+      cadena.push(actual)
+      continue
+    }
+
+    return {
+      ok: res.ok,
+      status: res.status,
+      final: actual,
+      html: res.ok ? await res.text() : '',
+      cadena,
+    }
   }
+  return { ok: false, status: 0, final: actual, html: '', cadena }
 }
 
 /** true si el enlace es de Pinterest: ahí yt-dlp no sirve y solo hace perder tiempo */
@@ -223,11 +253,40 @@ function esAcortador(url) {
 }
 
 /**
+ * Id del pin detras de un enlace corto, preguntando directo a la API que usa
+ * el propio `pin.it`.
+ *
+ * `pin.it/<codigo>` responde 308 hacia `api.pinterest.com/url_shortener/<codigo>/redirect/`,
+ * y ese salto es el que lleva al id. Si el primero no responde (red del host,
+ * bloqueo del dominio corto), esta llamada igual lo consigue.
+ */
+async function idPorApiDeAcortador(url) {
+  try {
+    const codigo = new URL(url).pathname.replace(/^\/+/, '').split(/[/?]/)[0]
+    if (!codigo) return null
+    const res = await fetch(`https://api.pinterest.com/url_shortener/${codigo}/redirect/`, {
+      headers: { 'User-Agent': UA, Accept: 'text/html' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(20000),
+    })
+    const destino = res.headers.get('location')
+    const id = destino ? idDePin(destino) : null
+    if (id) log.depuracion(`pinterest · el acortador lleva al pin ${id}`)
+    return id
+  } catch (err) {
+    log.aviso(`pinterest · el acortador no respondio · ${err.message}`)
+    return null
+  }
+}
+
+/**
  * Resuelve un enlace de Pinterest a su ficha canónica.
  *
  * `pin.it/abc123` no lleva el id: redirige a `/pin/<id>/sent/?invite_code=...`,
- * y esa página de "enviado" no publica la imagen. El id aparece en la url
- * final, así que hay que seguir la redirección antes de buscar nada.
+ * y esa página de "enviado" no publica la imagen. El id aparece en alguno de
+ * los saltos, así que se mira la cadena entera y no solo el último: Pinterest
+ * cierra la cadena en la portada cuando la petición viene de una IP que no le
+ * gusta, y ahí el id ya no está.
  *
  * `esFicha` dice si la url final es la ficha del pin. Un enlace caducado
  * termina en la portada, y la portada trae videos e imágenes de otros pines:
@@ -236,15 +295,20 @@ function esAcortador(url) {
 async function resolverPin(url) {
   let final = url
   let html = ''
+  let cadena = [url]
   try {
     const pagina = await bajarHtml(url)
     final = pagina.final
     html = pagina.html
+    cadena = pagina.cadena
   } catch (err) {
     log.aviso(`pinterest · no pude abrir el enlace · ${err.message}`)
   }
-  const id = idDePin(url) || idDePin(final)
-  return { id, final, html, esFicha: !!id && idDePin(final) === id }
+  const id =
+    cadena.map(idDePin).find(Boolean) ||
+    idDePin(url) ||
+    (esAcortador(url) ? await idPorApiDeAcortador(url) : null)
+  return { id, final, html, cadena, esFicha: !!id && idDePin(final) === id }
 }
 
 /** Último recurso para imágenes: el oEmbed público de Pinterest */
@@ -318,7 +382,7 @@ async function pinPorEnlace(sock, jid, msg, url) {
     }
   }
 
-  const { id, final, html: htmlEntrada, esFicha } = await resolverPin(url)
+  const { id, final, html: htmlEntrada, cadena, esFicha } = await resolverPin(url)
 
   // Sin id numérico no hay pin: es un tablero, un perfil, una búsqueda o un
   // enlace corto caducado. El HTML de esas páginas igual trae imágenes y
@@ -334,14 +398,27 @@ async function pinPorEnlace(sock, jid, msg, url) {
   // La ficha canónica trae la imagen; la de "enviado" del enlace corto no.
   // Solo vale el HTML si es de la ficha del pin: la portada, un tablero o una
   // búsqueda también responden 200 y traen media de otros pines.
+  //
+  // Cuando la cadena cerró en la portada, el id salió de un salto anterior, así
+  // que hay que ir a buscar el HTML de ese salto: es la página del pin, con su
+  // bloque, aunque no sea la url final.
   let html = esFicha ? htmlEntrada : ''
-  const objetivo = enlaceCanonico(id)
-  if (objetivo !== final || !html) {
-    try {
-      const pagina = await bajarHtml(objetivo)
-      if (pagina.ok && idDePin(pagina.final) === id) html = pagina.html
-    } catch (err) {
-      log.aviso(`pinterest · no pude abrir la ficha ${objetivo} · ${err.message}`)
+  if (!html) {
+    const saltosDelPin = cadena.filter((u) => idDePin(u) === id && u !== final)
+    const candidatos = [enlaceCanonico(id), ...saltosDelPin]
+    for (const candidato of candidatos) {
+      try {
+        const pagina = await bajarHtml(candidato)
+        if (!pagina.ok) continue
+        // La ficha de una historia (o de un pin que Pinterest da por borrado)
+        // redirige a otro id; igual sirve si trae el bloque del pin pedido.
+        if (idDePin(pagina.final) === id || bloqueDelPin(pagina.html, id)) {
+          html = pagina.html
+          break
+        }
+      } catch (err) {
+        log.aviso(`pinterest · no pude abrir la ficha ${candidato} · ${err.message}`)
+      }
     }
   }
   if (!html) throw new Error('no pude abrir la ficha del pin')
