@@ -245,6 +245,20 @@ const conSub = (fn, sub) => (ctx) => fn({ ...ctx, args: [sub, ...(ctx.args || []
 // Registro dinamico: cada archivo de commands/ se expone por su nombre
 const C = await cargarComandos()
 
+/**
+ * `/rpg` hace dos cosas segun el argumento:
+ *   /rpg              ficha del personaje (commands/rpg.js)
+ *   /rpg on | off     activa o apaga los comandos de rol en el chat (modos.js)
+ *
+ * Antes habia dos claves `rpg` en el registro: la segunda (el modo) pisaba a
+ * la primera y la ficha quedaba inalcanzable. Con un solo despachador las dos
+ * funcionan y el menu lista el comando una sola vez.
+ */
+const rpgComando = (ctx) => {
+  const sub = String(ctx.args?.[0] || '').toLowerCase()
+  return sub === 'on' || sub === 'off' ? rpgModo(ctx) : C.rpg(ctx)
+}
+
 const commands = {
   greet: C.greet,
   ping: C.ping,
@@ -447,7 +461,7 @@ const commands = {
   r34vid: r34vidCmd,
   nsfwvideo: C['nsfw-video'],
   // ── RPG de economia ──
-  rpg: C.rpg,
+  rpg: rpgComando,
   hunt: conSub(C.rpg, 'hunt'),
   cazar: conSub(C.rpg, 'hunt'),
   mine: conSub(C.rpg, 'mine'),
@@ -891,8 +905,7 @@ const commands = {
   pasatiempo: C.pasatiempo,
   delpasatiempo: conSub(C.pasatiempo, 'borrar'),
   removehobby: conSub(C.pasatiempo, 'borrar'),
-  // ── Modos nuevos (rol, juegos, estados y llamadas) ──
-  rpg: rpgModo,
+  // ── Modos nuevos (juegos, estados y llamadas) ──
   game: juegosModo,
   juegos: juegosModo,
   juego: juegosModo,
