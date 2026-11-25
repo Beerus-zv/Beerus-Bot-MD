@@ -9,16 +9,12 @@ import {
   audioDesdeVideo,
   enviarSticker,
   enviarStickerConAudio,
+  DURACION_MAXIMA_STICKER,
 } from '../lib/multimedia.js'
 import { audioDeSticker } from '../lib/sticker-video.js'
 import { log } from '../lib/logger.js'
 
-const DURACION_POR_DEFECTO = 6
-
-// Un sticker animado puede durar mas de 10 s: el limite real de WhatsApp es el
-// peso (500 KB), no el reloj. El motor baja fps, calidad y resolucion util
-// antes de recortar, asi que 15 s entran si el clip no tiene demasiado detalle.
-const DURACION_MAXIMA = 15
+const DURACION_MAXIMA = DURACION_MAXIMA_STICKER
 
 // Una descarga colgada no puede dejar al usuario esperando para siempre: si
 // WhatsApp no entrega el archivo en este plazo, el comando responde con error.
@@ -100,15 +96,16 @@ async function manejar({ sock, jid, msg, args }) {
     return
   }
 
-  // Duración opcional: /stickeraudio 10  (segundos, máximo 15)
-  let duracion = DURACION_POR_DEFECTO
+  // Sin argumento el sticker dura lo que dure el video. Con argumento se
+  // respeta lo pedido, siempre que el clip alcance.
+  let duracion = null
   const arg = Number(args?.[0])
   if (Number.isFinite(arg) && arg > 0) {
     duracion = Math.min(Math.max(arg, 1), DURACION_MAXIMA)
   }
 
   await sock.sendMessage(jid, {
-    text: `⏳ Sacando el sticker y el audio del video (${duracion}s)...`,
+    text: `⏳ Sacando el sticker y el audio del video${duracion ? ` (${duracion}s)` : ''}...`,
   })
 
   const buffer = await conLimite(
@@ -130,10 +127,15 @@ async function manejar({ sock, jid, msg, args }) {
   // El sticker manda el ritmo: si el clip se recorta para entrar en los
   // 500 KB de WhatsApp, el audio tiene que cortarse igual o el cliente
   // reproduce el sticker como GIF mudo.
-  const { buffer: sticker, duracion: duracionReal } = await stickerDesdeVideoInfo(buffer, { duracion })
+  const {
+    buffer: sticker,
+    duracion: duracionReal,
+    recortado,
+  } = await stickerDesdeVideoInfo(buffer, { duracion })
 
   log.depuracion(
-    `stickeraudio · sticker listo (${(sticker.length / 1024).toFixed(0)} KB, ${duracionReal}s)`
+    `stickeraudio · sticker listo (${(sticker.length / 1024).toFixed(0)} KB, ${duracionReal}s` +
+      `${recortado ? ', recortado por peso' : ''})`
   )
 
   const audio = await audioDesdeVideo(buffer, { duracion: duracionReal }).catch((err) => {
@@ -141,10 +143,10 @@ async function manejar({ sock, jid, msg, args }) {
     return null
   })
 
-  if (duracionReal < duracion) {
+  if (recortado) {
     const segundos = Math.round(duracionReal * 10) / 10
     await sock.sendMessage(jid, {
-      text: `✂️ El sticker quedó en ${segundos}s: el video duraba menos o no entraba en los 500 KB de WhatsApp.`,
+      text: `✂️ El sticker quedó en ${segundos}s porque no entraba en los 500 KB de WhatsApp.`,
     })
   }
 

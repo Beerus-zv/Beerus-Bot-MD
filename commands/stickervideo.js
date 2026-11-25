@@ -4,6 +4,7 @@ import {
   descargarMedia,
   stickerDesdeVideo,
   enviarSticker,
+  DURACION_MAXIMA_STICKER,
 } from '../lib/multimedia.js'
 import { log } from '../lib/logger.js'
 
@@ -40,15 +41,16 @@ export default async ({ sock, jid, msg, args }) => {
     return
   }
 
-  // Duración opcional: /stickervideo 10  (segundos, máximo 15)
-  let duracion = 6
+  // Sin argumento el sticker dura lo que dure el video. Con argumento se
+  // respeta lo pedido, siempre que el clip alcance.
+  let duracion = null
   const arg = Number(args?.[0])
   if (Number.isFinite(arg) && arg > 0) {
-    duracion = Math.min(Math.max(arg, 1), 15)
+    duracion = Math.min(Math.max(arg, 1), DURACION_MAXIMA_STICKER)
   }
 
   await sock.sendMessage(jid, {
-    text: `⏳ Convirtiendo el video en sticker animado (${duracion}s)...`,
+    text: `⏳ Convirtiendo el video en sticker animado${duracion ? ` (${duracion}s)` : ''}...`,
   })
 
   try {
