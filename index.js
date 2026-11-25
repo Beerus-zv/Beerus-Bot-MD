@@ -19,6 +19,7 @@ import { obtenerMetadata, esAdmin, esMencionDelBot, extraerComandoTrasMencion, e
 import { log, recordarGrupo, necesitaNombre, intentoNombre } from './lib/logger.js'
 import { autoReaccionar } from './lib/autoreact.js'
 import { marcarLeido } from './lib/autoread.js'
+import { capturarAudioDeSticker } from './lib/multimedia.js'
 import { categoriaDe } from './lib/categorias.js'
 import { revisarAntilink } from './lib/antilink.js'
 import { procesarCambioParticipantes } from './lib/bienvenida.js'
@@ -1320,6 +1321,10 @@ const userSpamData = {}
 
         // Ignora los mensajes que envió el propio bot (evita bucles)
         if (vieneDelBot(msg)) return
+
+        // Sticker con audio adentro: se guarda por hash para que /tovideo lo
+        // encuentre despues, aunque la cita no copie el campo 26.
+        capturarAudioDeSticker(sock, msg).catch(() => {})
 
         // Autoread: deja el chat sin contadores de no leídos
         marcarLeido(sock, msg)
