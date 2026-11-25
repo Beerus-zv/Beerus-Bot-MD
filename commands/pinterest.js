@@ -1,4 +1,4 @@
-import { descargarContenido, enviarDescarga, esUrl } from '../lib/descargas.js'
+import { descargarContenido, enviarDescarga, esUrl, miniaturaJpeg } from '../lib/descargas.js'
 import { log } from '../lib/logger.js'
 
 const UA =
@@ -43,14 +43,36 @@ function enlaceCanonico(id) {
 }
 
 /**
+ * Trozo del HTML que describe el pin pedido.
+ *
+ * Una ficha trae un JSON enorme con el pin y, detrás, los pines relacionados.
+ * Buscar el video o la imagen en la página entera agarra el primero que
+ * aparezca, que muchas veces es de otro pin. El bloque propio se reconoce por
+ * `"entityId":"<id>"`, que viene justo después de los datos del pin.
+ *
+ * Devuelve '' si la página no trae ese bloque: ahí no se puede afirmar que lo
+ * encontrado sea del pin, así que el comando no lo usa.
+ */
+function bloqueDelPin(html, id) {
+  if (!id) return ''
+  const marca = `"entityId":"${id}"`
+  const pos = html.indexOf(marca)
+  if (pos < 0) return ''
+  return html.slice(Math.max(0, pos - 60000), pos + 20000)
+}
+
+/**
  * Saca la url de imagen del HTML de un pin.
  *
  * El patrón viejo (`"orig":{...}` y `og:image`) ya no aparece: la web actual
  * sirve el JSON del pin con las urls entre comillas. Se exige que la url
  * termine en extensión de imagen para no caer en `background-origin`, que
  * también contiene "i.pinimg.com/originals" dentro del CSS.
+ *
+ * Se mira primero el bloque del pin y solo se abre a la página entera si la
+ * ficha no trae bloque: así no se manda la imagen de un pin relacionado.
  */
-function urlDePin(html) {
+function urlDePin(html, id) {
   const patrones = [
     /"orig"\s*:\s*\{\s*"url"\s*:\s*"(https:[^"]+)"/,
     /"(https:\/\/i\.pinimg\.com\/originals\/[^"]+\.(?:jpg|jpeg|png|webp|gif))"/i,
@@ -58,28 +80,61 @@ function urlDePin(html) {
     /property="og:image"\s+content="([^"]+)"/,
     /<meta[^>]*property="og:image"[^>]*content="([^"]+)"/,
   ]
-  for (const patron of patrones) {
-    const m = html.match(patron)
-    if (!m) continue
-    const limpia = m[1].replace(/\\u002F/gi, '/').replace(/\\\//g, '/')
-    if (/i\.pinimg\.com/.test(limpia) && /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(limpia)) return limpia
+  const buscar = (fuente) => {
+    if (!fuente) return null
+    for (const patron of patrones) {
+      const m = fuente.match(patron)
+      if (!m) continue
+      const limpia = m[1].replace(/\\u002F/gi, '/').replace(/\\\//g, '/')
+      if (/i\.pinimg\.com/.test(limpia) && /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(limpia)) return limpia
+    }
+    return null
   }
-  return null
+  // Primero el bloque del pin; si ahí no hay nada, la ficha entera (el
+  // llamador ya comprobó que es la ficha del pin, no la portada).
+  return buscar(bloqueDelPin(html, id)) || buscar(html)
 }
 
-/** Url del mp4 cuando el pin es un video (se queda con la resolución más alta) */
-function videoDePin(html) {
-  const urls = [...html.matchAll(/"(https:\/\/v1\.pinimg\.com\/videos\/[^"]+\.mp4[^"]*)"/gi)].map((m) =>
-    m[1].replace(/\\u002F/gi, '/')
-  )
+/**
+ * Video del pin: la variante de más resolución y su miniatura.
+ *
+ * Las variantes vienen como `/720p/<hash>.mp4` (la buena) y `_540w.mp4`. Solo
+ * cuenta el bloque del pin: la ficha de una imagen también trae los videos de
+ * "más como esto", y sin esta guarda se mandaba el video de otro pin.
+ *
+ * @returns {{url: string, miniatura: string|null}|null}
+ */
+function videoDePin(html, id) {
+  const bloque = bloqueDelPin(html, id)
+  const leer = (fuente) =>
+    [...fuente.matchAll(/"(https:\/\/v1\.pinimg\.com\/videos\/[^"]+\.mp4[^"]*)"/gi)].map((m) =>
+      m[1].replace(/\\u002F/gi, '/')
+    )
+
+  let urls = bloque ? leer(bloque) : []
+  if (!urls.length) {
+    // Sin bloque no se puede afirmar cuál es el video del pin. Si la ficha
+    // entera menciona un solo archivo, es ese; si hay varios, son de los
+    // pines relacionados y mandar cualquiera sería mandar otro pin.
+    const todos = leer(html)
+    const hashes = new Set(todos.map((u) => u.split('/').pop().replace(/_\d+w\.mp4$/, '')))
+    if (hashes.size !== 1) return null
+    urls = todos
+  }
   if (!urls.length) return null
-  // Las variantes vienen como `/720p/<hash>.mp4` (la buena) y `_540w.mp4`
   const ancho = (url) => {
     const calidad = url.match(/\/(\d{3,4})p\//)
     if (calidad) return Number(calidad[1])
     return Number(url.match(/_(\d+)w\.mp4/)?.[1] || 0)
   }
-  return urls.sort((a, b) => ancho(b) - ancho(a))[0]
+  const url = [...new Set(urls)].sort((a, b) => ancho(b) - ancho(a))[0]
+  // La miniatura lleva el mismo hash que el mp4, así que se busca por ese
+  // nombre: en la ficha hay varias y solo una es de este video.
+  const hash = url.split('/').pop().replace(/_\d+w\.mp4$/, '').replace(/\.mp4$/, '')
+  const miniatura = html.match(
+    new RegExp(`"thumbnail":"(https:\\/\\/i\\.pinimg\\.com\\/videos\\/thumbnails\\/[^"]*${hash}[^"]*)"`, 'i')
+  )?.[1]
+  return { url, miniatura: miniatura ? miniatura.replace(/\\u002F/gi, '/') : null }
 }
 
 /** Bajada de imagen con user-agent de navegador */
@@ -142,12 +197,25 @@ function esEnlacePinterest(url) {
   }
 }
 
+/** true si es un enlace corto: esos caducan y su destino se pierde para siempre */
+function esAcortador(url) {
+  try {
+    return new URL(url).hostname.toLowerCase() === 'pin.it'
+  } catch {
+    return false
+  }
+}
+
 /**
  * Resuelve un enlace de Pinterest a su ficha canónica.
  *
  * `pin.it/abc123` no lleva el id: redirige a `/pin/<id>/sent/?invite_code=...`,
  * y esa página de "enviado" no publica la imagen. El id aparece en la url
  * final, así que hay que seguir la redirección antes de buscar nada.
+ *
+ * `esFicha` dice si la url final es la ficha del pin. Un enlace caducado
+ * termina en la portada, y la portada trae videos e imágenes de otros pines:
+ * usarla sería mandar el pin de un desconocido.
  */
 async function resolverPin(url) {
   let final = url
@@ -159,7 +227,8 @@ async function resolverPin(url) {
   } catch (err) {
     log.aviso(`pinterest · no pude abrir el enlace · ${err.message}`)
   }
-  return { id: idDePin(url) || idDePin(final), final, html }
+  const id = idDePin(url) || idDePin(final)
+  return { id, final, html, esFicha: !!id && idDePin(final) === id }
 }
 
 /** Último recurso para imágenes: el oEmbed público de Pinterest */
@@ -170,6 +239,30 @@ async function imagenPorOembed(id) {
     )
     const url = json?.thumbnail_url
     return typeof url === 'string' && /^https?:\/\//.test(url) ? url : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Miniatura para el `jpegThumbnail` del video.
+ *
+ * Sin miniatura, WhatsApp Web muestra el video como un recuadro con el peso en
+ * vez de la vista previa. Pinterest ya publica la suya en JPEG, así que se usa
+ * tal cual: pasar por sharp obligaría a tener la dependencia nativa para algo
+ * que no la necesita. Solo si viene en webp/png se intenta convertir.
+ */
+async function bajarMiniatura(url) {
+  if (!url) return null
+  try {
+    // Con sharp se achica a 320 px, que es lo que WhatsApp espera (unas pocas
+    // decenas de KB como mucho). Sin sharp se manda el JPEG de Pinterest tal
+    // cual: se ve igual, solo pesa más en el proto.
+    const chica = await miniaturaJpeg(url)
+    if (chica) return chica
+    const buffer = await bajarImagen(url)
+    if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return buffer
+    return null
   } catch {
     return null
   }
@@ -190,36 +283,49 @@ async function pinPorEnlace(sock, jid, msg, url) {
     }
   }
 
-  const { id, final, html: htmlEntrada } = await resolverPin(url)
+  const { id, final, html: htmlEntrada, esFicha } = await resolverPin(url)
 
-  // Sin id numérico no hay pin: es un tablero, un perfil o una búsqueda. Ahí
-  // el HTML igual trae un `og:image` (el avatar), así que hay que cortar antes
-  // de bajarlo, o el comando manda la foto de perfil como si fuera el pin.
-  if (!id) throw new Error('ese enlace no es un pin (puede ser un tablero o un perfil)')
+  // Sin id numérico no hay pin: es un tablero, un perfil, una búsqueda o un
+  // enlace corto caducado. El HTML de esas páginas igual trae imágenes y
+  // videos (el avatar, los pines de portada), así que hay que cortar antes de
+  // bajar nada o el comando manda el pin de un desconocido.
+  if (!id) {
+    if (esAcortador(url)) {
+      throw new Error('el enlace corto ya no lleva a ningún pin: caducó o el pin se borró')
+    }
+    throw new Error('ese enlace no es un pin (puede ser un tablero o un perfil)')
+  }
 
   // La ficha canónica trae la imagen; la de "enviado" del enlace corto no.
-  let html = htmlEntrada
+  // Solo vale el HTML si es de la ficha del pin: la portada, un tablero o una
+  // búsqueda también responden 200 y traen media de otros pines.
+  let html = esFicha ? htmlEntrada : ''
   const objetivo = enlaceCanonico(id)
-  if (objetivo !== final) {
+  if (objetivo !== final || !html) {
     try {
       const pagina = await bajarHtml(objetivo)
-      if (pagina.ok) html = pagina.html
+      if (pagina.ok && idDePin(pagina.final) === id) html = pagina.html
     } catch (err) {
       log.aviso(`pinterest · no pude abrir la ficha ${objetivo} · ${err.message}`)
     }
   }
+  if (!html) throw new Error('no pude abrir la ficha del pin')
 
   // Pin de video: se manda el mp4, que es lo que la gente espera ver
   let motivoVideo = ''
-  const video = videoDePin(html)
+  const video = videoDePin(html, id)
   if (video) {
     try {
-      const mp4 = await bajarConTope(video, LIMITE_VIDEO)
+      const mp4 = await bajarConTope(video.url, LIMITE_VIDEO)
+      // Sin miniatura, WhatsApp Web muestra el archivo como un recuadro con el
+      // peso en vez de la vista previa del video.
+      const miniatura = await bajarMiniatura(video.miniatura)
       await sock.sendMessage(
         jid,
         {
           video: mp4,
           mimetype: 'video/mp4',
+          ...(miniatura ? { jpegThumbnail: miniatura } : {}),
           caption: `📌 *Pinterest* · video (${(mp4.length / 1048576).toFixed(1)} MB)`,
         },
         { quoted: msg }
@@ -234,7 +340,7 @@ async function pinPorEnlace(sock, jid, msg, url) {
     }
   }
 
-  const imagen = urlDePin(html) || (await imagenPorOembed(id))
+  const imagen = urlDePin(html, id) || (await imagenPorOembed(id))
   if (!imagen) {
     if (motivoVideo) throw new Error(motivoVideo)
     throw new Error('el pin no publica una imagen')
