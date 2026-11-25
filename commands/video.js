@@ -3,6 +3,7 @@ import {
   descargarContenido,
   mimeDe,
   formatearDuracion,
+  normalizarVideoWhatsApp,
   LIMITES,
 } from '../lib/descargas.js'
 import { log } from '../lib/logger.js'
@@ -107,9 +108,10 @@ export default async ({ sock, jid, msg, args }) => {
       return
     }
 
+    const video = await normalizarVideoWhatsApp(resultado.buffer)
     await sock.sendMessage(jid, {
-      video: resultado.buffer,
-      mimetype: mimeDe(resultado.extension),
+      video,
+      mimetype: video.toString('latin1', 4, 8) === 'ftyp' ? 'video/mp4' : mimeDe(resultado.extension),
       caption: barra,
       quoted: msg,
     })

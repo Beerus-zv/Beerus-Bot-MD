@@ -13,6 +13,7 @@
  * 24 MB y lo que pase se responde con el enlace.
  */
 import { nsfwActivo, ultimoUso, marcarUso } from '../database/db.js'
+import { normalizarVideoWhatsApp } from '../lib/descargas.js'
 import { recargaActiva } from '../lib/economia.js'
 import { buscarVideos, descargarVideo, resolverVideo, SITIOS } from '../lib/nsfw-video.js'
 
@@ -79,8 +80,9 @@ export function fabricarComandoVideo(sitio) {
           quoted: msg,
         })
       }
+      const video = await normalizarVideoWhatsApp(datos.buffer)
       await sock.sendMessage(jid, {
-        video: datos.buffer,
+        video,
         mimetype: 'video/mp4',
         caption: `🔞 *${datos.titulo}*\n📦 ${(datos.buffer.length / 1048576).toFixed(1)} MB`,
         quoted: msg,
@@ -152,8 +154,9 @@ export function fabricarComandoVideo(sitio) {
       `📦 ${(datos.buffer.length / 1048576).toFixed(1)} MB\n` +
       `▸ ${elegido.url.slice(0, 90)}`
 
+    const video = await normalizarVideoWhatsApp(datos.buffer)
     await sock.sendMessage(jid, {
-      video: datos.buffer,
+      video,
       mimetype: 'video/mp4',
       caption: pie,
       quoted: msg,

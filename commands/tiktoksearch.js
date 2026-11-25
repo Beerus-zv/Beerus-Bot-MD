@@ -3,7 +3,7 @@
  * Prueba varias APIs en orden hasta que una responda (la anterior,
  * api.tiksearch.xyz, ya no existe). Usa fetch nativo.
  */
-import { bajarArchivo, LIMITES } from '../lib/descargas.js'
+import { bajarArchivo, LIMITES, normalizarVideoWhatsApp } from '../lib/descargas.js'
 import { log } from '../lib/logger.js'
 
 const UA =
@@ -86,11 +86,14 @@ export default async ({ sock, jid, msg, args }) => {
       try {
         const buffer = await bajarArchivo(v.url, { maxBytes: MAX_BYTES, headers: { Referer: 'https://www.tiktok.com/' } })
         if (!buffer.length) continue
+        // TikTok también sirve webm/HEVC en algunos videos; WhatsApp solo abre
+        // H.264 con el índice al principio.
+        const video = await normalizarVideoWhatsApp(buffer)
         const titulo = String(v.titulo || 'Sin título').trim().slice(0, 200)
         await sock.sendMessage(
           jid,
           {
-            video: buffer,
+            video,
             mimetype: 'video/mp4',
             caption:
               `💞 *TikTok Search* (${enviados + 1}/${MAX_VIDEOS})\n🔎 ${texto}\n\n${titulo}` +

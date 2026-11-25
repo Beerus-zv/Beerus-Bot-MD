@@ -1,8 +1,4 @@
-import { spawn } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { descargarContenido, enviarDescarga, esUrl, ffmpegDisponible, miniaturaJpeg } from '../lib/descargas.js'
+import { descargarContenido, enviarDescarga, esUrl, ffmpegDisponible, miniaturaJpeg, normalizarVideoWhatsApp } from '../lib/descargas.js'
 import { log } from '../lib/logger.js'
 
 const UA =
@@ -265,141 +261,22 @@ async function imagenPorOembed(id) {
 }
 
 /**
- * Corre un binario pasándole un buffer por stdin y devuelve su stdout.
+ * Deja el mp4 del pin en la forma que WhatsApp decodifica.
  *
- * Sirve para ffprobe, que solo lee. ffmpeg no puede escribir MP4 por tubería
- * (el muxer necesita buscar dentro del archivo), así que ese camino usa
- * archivos temporales.
- */
-function correrBinario(bin, args, entrada, timeoutMs = 120000) {
-  return new Promise((resolve, reject) => {
-    const proceso = spawn(bin, args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
-    const salida = []
-    const errores = []
-
-    const reloj = setTimeout(() => {
-      proceso.kill('SIGKILL')
-      reject(new Error(`${bin.toUpperCase()}_TIMEOUT`))
-    }, timeoutMs)
-
-    proceso.stdout.on('data', (d) => salida.push(d))
-    proceso.stderr.on('data', (d) => errores.push(d))
-    proceso.on('error', (err) => {
-      clearTimeout(reloj)
-      reject(err)
-    })
-    proceso.on('close', (code) => {
-      clearTimeout(reloj)
-      if (code === 0) resolve(Buffer.concat(salida))
-      else reject(new Error(`${bin.toUpperCase()}_ERROR_${code}: ${Buffer.concat(errores).toString().slice(-300)}`))
-    })
-
-    proceso.stdin.on('error', () => {})
-    proceso.stdin.end(entrada)
-  })
-}
-
-/** Nombre del códec de video del mp4, o null si no se puede leer */
-async function codecDeVideo(buffer) {
-  try {
-    const salida = await correrBinario(
-      'ffprobe',
-      [
-        '-v', 'error',
-        '-select_streams', 'v:0',
-        '-show_entries', 'stream=codec_name',
-        '-of', 'default=nw=1:nk=1',
-        '-i', 'pipe:0',
-      ],
-      buffer,
-      20000
-    )
-    return salida.toString().trim().toLowerCase() || null
-  } catch {
-    return null
-  }
-}
-
-/** Corre ffmpeg sobre archivos y resuelve cuando termina bien */
-async function ffmpegArchivo(args, timeoutMs = 180000) {
-  return new Promise((resolve, reject) => {
-    const proceso = spawn('ffmpeg', args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
-    const errores = []
-    const reloj = setTimeout(() => {
-      proceso.kill('SIGKILL')
-      reject(new Error('FFMPEG_TIMEOUT'))
-    }, timeoutMs)
-    proceso.stderr.on('data', (d) => errores.push(d))
-    proceso.on('error', (err) => {
-      clearTimeout(reloj)
-      reject(err)
-    })
-    proceso.on('close', (code) => {
-      clearTimeout(reloj)
-      if (code === 0) resolve()
-      else reject(new Error(`FFMPEG_ERROR_${code}: ${Buffer.concat(errores).toString().slice(-300)}`))
-    })
-  })
-}
-
-/**
- * Deja el mp4 en la forma que WhatsApp decodifica: H.264, índice al principio
- * (`faststart`) y sin recodificar cuando ya viene en H.264.
- *
- * Pinterest publica variantes en AV1 y HEVC, que Android no abre: el mensaje
- * llega con su peso y su miniatura, y al tocarlo dice "este video no está
- * disponible porque hay un problema con el archivo de video". Si no hay
- * ffmpeg, se devuelve el original y el filtro de la url ya hizo su parte.
- *
- * El MP4 no se puede escribir por tubería (el muxer necesita buscar dentro del
- * archivo), así que va por un directorio temporal que se borra al final.
+ * El trabajo pesado vive en lib/descargas.js porque los demas comandos de
+ * descarga tienen el mismo problema. Aca solo se agrega la guarda del pin:
+ * si Pinterest devolvio HTML con 200, esto no es un video y hay que cortar.
  */
 async function prepararVideoWhatsApp(buffer, conversion = false) {
-  // Un 200 con HTML de error también llega como "video": sin esto se manda un
-  // archivo que no es mp4 y WhatsApp lo rechaza al abrirlo.
   if (buffer.length < 12 || buffer.toString('latin1', 4, 8) !== 'ftyp') {
-    throw new Error('lo que devolvió Pinterest no es un mp4')
+    throw new Error('lo que devolvio Pinterest no es un mp4')
   }
-  const hayFfmpeg = await ffmpegDisponible()
-  if (!hayFfmpeg) {
+  if (conversion && !(await ffmpegDisponible())) {
     // Sin ffmpeg no hay forma de convertir un AV1/HEVC: mejor la imagen del
-    // pin que un video que el teléfono va a rechazar.
-    if (conversion) throw new Error('el video del pin está en un formato que WhatsApp no abre y no hay ffmpeg para convertirlo')
-    return buffer
+    // pin que un video que el telefono va a rechazar.
+    throw new Error('el video del pin esta en un formato que WhatsApp no abre y no hay ffmpeg para convertirlo')
   }
-  const codec = await codecDeVideo(buffer)
-
-  let carpeta
-  try {
-    carpeta = await mkdtemp(join(tmpdir(), 'beerus-pin-'))
-    const entrada = join(carpeta, 'entrada.mp4')
-    const salida = join(carpeta, 'salida.mp4')
-    await writeFile(entrada, buffer)
-
-    const copia = codec === 'h264'
-    if (!copia) log.depuracion(`pinterest · video en ${codec || 'codec desconocido'}, pasando a H.264`)
-
-    const args = copia
-      ? ['-hide_banner', '-loglevel', 'error', '-i', entrada, '-c', 'copy', '-movflags', '+faststart', '-f', 'mp4', salida]
-      : [
-          '-hide_banner', '-loglevel', 'error',
-          '-i', entrada,
-          '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
-          '-c:a', 'aac', '-b:a', '96k',
-          '-movflags', '+faststart',
-          '-f', 'mp4', salida,
-        ]
-
-    await ffmpegArchivo(args)
-    const listo = await readFile(salida)
-    if (!listo.length) throw new Error('ffmpeg devolvió un archivo vacío')
-    return listo
-  } catch (err) {
-    log.aviso(`pinterest · no pude normalizar el video · ${err.message}`)
-    return buffer
-  } finally {
-    if (carpeta) await rm(carpeta, { recursive: true, force: true }).catch(() => {})
-  }
+  return normalizarVideoWhatsApp(buffer)
 }
 
 /**
