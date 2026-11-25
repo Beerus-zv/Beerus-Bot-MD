@@ -6,7 +6,7 @@
  * campo 26, lo que arma /stickeraudio), el video sale con ese mismo audio.
  * Para forzar video aunque el sticker sea estático, /tovideo.
  */
-import { descargarMedia, esWebpAnimado, stickerRespondido } from '../lib/multimedia.js'
+import { contextoDeCita, descargarMedia, esWebpAnimado, stickerRespondido } from '../lib/multimedia.js'
 import { stickerAMp4 } from '../lib/sticker-video.js'
 
 export default async ({ sock, jid, msg }) => {
@@ -37,7 +37,9 @@ export default async ({ sock, jid, msg }) => {
 
   try {
     if (esWebpAnimado(buffer)) {
-      const { video, conAudio } = await stickerAMp4(sock, fuente, buffer)
+      const { video, conAudio } = await stickerAMp4(sock, fuente, buffer, {
+        idSticker: contextoDeCita(msg)?.stanzaId ?? msg?.key?.id,
+      })
       await sock.sendMessage(jid, {
         video,
         mimetype: 'video/mp4',
