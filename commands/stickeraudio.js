@@ -135,13 +135,21 @@ async function rehacerStickerConAudio({ sock, jid, msg, fuente }) {
       return
     }
 
-    const { audio, origen } = await audioDeSticker(sock, fuente, {
+    const { audio, origen, claves } = await audioDeSticker(sock, fuente, {
       idSticker: contextoDeCita(msg)?.stanzaId ?? msg?.key?.id,
     })
 
     if (!audio) {
+      // Sin audio no hay nada que pegar: el sonido no vive en el WebP
+      const detalle = claves.map((c) => c.slice(0, 16)).join(' | ') || 'sin claves'
+      console.log(
+        `[stickeraudio] sticker sin audio · campo 26: ${Boolean(fuente.audioMessage)} · busque: ${detalle}`
+      )
+
       await enviarSticker(sock, jid, buffer, msg)
-      await responder('🔇 Ese sticker no trae audio; salió igual con la firma nueva.')
+      await responder(
+        '🔇 Ese sticker no trae el audio adentro, así que salió con la firma nueva y sin sonido.\n_Reenvíalo al chat y repite el comando: el bot guarda el audio cuando lo recibe._'
+      )
       return
     }
 
