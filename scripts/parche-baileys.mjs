@@ -283,7 +283,7 @@ export function estadoBaileys(raiz = raizBaileys()) {
  * Nunca lanza: un parche que no encaja no puede tumbar el arranque.
  */
 export function parchearBaileys(raiz = raizBaileys()) {
-  const reporte = { aplicados: 0, instalado: Boolean(raiz), ruta: raiz, avisos: [], estado: null }
+  const reporte = { aplicados: 0, instalado: Boolean(raiz), ruta: raiz, avisos: [], sinPunto: [], estado: null }
 
   if (!raiz) {
     reporte.avisos.push('el paquete de Baileys no esta instalado; nada que parchear')
@@ -305,19 +305,25 @@ export function parchearBaileys(raiz = raizBaileys()) {
     }
 
     let tocados = 0
+    let sinPunto = 0
+
     for (const ruta of archivos) {
       const resultado = aplicar(ruta, trabajo.arreglo)
       if (resultado.error) {
         reporte.avisos.push(`${trabajo.nombre}: ${path.basename(ruta)} · ${resultado.error}`)
         continue
       }
-      if (resultado.sinPunto) {
-        reporte.avisos.push(`${trabajo.nombre}: no encontre el punto en ${path.basename(ruta)}`)
-        continue
-      }
+      // Un archivo que menciona la marca sin tener la forma esperada es normal:
+      // `socket.js` arma el nodo y `messages-recv.js` lo maneja. Solo importa
+      // si al final el parche no quedo en ningun lado; eso se avisa abajo.
+      if (resultado.sinPunto) sinPunto += 1
       if (resultado.cambios > 0) tocados += 1
     }
+
     reporte.aplicados += tocados
+    if (tocados === 0 && sinPunto > 0) {
+      reporte.sinPunto.push({ nombre: trabajo.nombre, archivos: archivos.length })
+    }
   }
 
   reporte.estado = estadoBaileys(raiz)
@@ -329,7 +335,10 @@ export function parchearBaileys(raiz = raizBaileys()) {
         : falta === 'etapa'
           ? 'el manejador de companion_reg no filtra la etapa'
           : 'la condicion de registro no mira creds.account'
-    reporte.avisos.push(`SIN PARCHE · ${detalle}`)
+    const pista = reporte.sinPunto.find((s) => s.nombre.includes(falta === 'registro' ? 'sesion' : falta))
+    reporte.avisos.push(
+      `SIN PARCHE · ${detalle}` + (pista ? ` (la forma del codigo no coincide en ${pista.archivos} archivo/s)` : '')
+    )
   }
 
   return reporte
