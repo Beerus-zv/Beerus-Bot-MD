@@ -19,7 +19,7 @@ import {
   eliminarSubBot,
   listarSubBots,
 } from '../lib/subbot.js'
-import { normalizarNumero, formatearCodigo } from '../lib/vinculacion.js'
+import { normalizarNumero, codigoPlano } from '../lib/vinculacion.js'
 
 const AYUDA =
   '*SUB-BOTS*\n\n' +
@@ -84,14 +84,16 @@ function numeroDelRemitente({ msg, sender, sock }) {
  * aislado, mantener pulsado y copiar se lleva exactamente el codigo.
  */
 async function enviarCodigo(entregar, codigo, numero, { renovado = false } = {}) {
-  await entregar(codigo)
+  const plano = codigoPlano(codigo)
+
+  await entregar(plano)
 
   await entregar(
     `${renovado ? '*Codigo nuevo* — el anterior ya no sirve.' : '*Codigo de vinculacion*'} — ${numero}\n\n` +
       `En el WhatsApp de ese numero:\n` +
       `Ajustes > Dispositivos vinculados > Vincular un dispositivo\n` +
       `> Vincular con numero de telefono.\n\n` +
-      `_Copia el codigo del mensaje de arriba: son 8 caracteres, el guion lo pone WhatsApp. Si vence, el bot manda otro solo — usa siempre el ultimo._`
+      `_Copia el codigo del mensaje de arriba: son 8 caracteres, sin guion. El campo del telefono lo pone solo. Si vence, repite_ \`/code\` _y usa el ultimo._`
   )
 }
 
@@ -244,7 +246,7 @@ export default async ({ sock, jid, msg, args, sender }) => {
   }
 
   if (!codigoEntregado && resultado.codigo) {
-    return enviarCodigo(responder, formatearCodigo(resultado.codigo), numero)
+    return enviarCodigo(responder, resultado.codigo, numero)
   }
 
   // El codigo llega por el callback del socket; si no, el aviso de arriba

@@ -38,6 +38,18 @@ import { COMANDOS_VIP, esVip, jidsDe } from './lib/vip.js'
 import { prefijosBot, modoPrivado, nombreBot } from './lib/ajustes-bot.js'
 import { registrarSocket, quitarSocket } from './lib/sockets.js'
 import { configurarSubBots, restaurarSubBots, fijarVersionWhatsApp } from './lib/subbot.js'
+import { reporteParches } from './scripts/parche-baileys.mjs'
+
+// Los tres parches de vinculacion de Baileys son la diferencia entre "el codigo
+// se genera" y "el telefono lo acepta". Si alguno no quedo escrito, se dice al
+// arrancar y no cuando el usuario ya esta peleando con el telefono.
+{
+  const parches = reporteParches()
+  if (parches.estado && parches.estado.faltan.length) {
+    log.aviso(`Vinculación: faltan parches de Baileys (${parches.estado.faltan.join(', ')})`)
+    for (const aviso of parches.avisos) log.aviso(`  · ${aviso}`)
+  }
+}
 
 // ── Tarifa de oro por comando (categorías pagadas) ──
 const COSTE_COMANDO_ORO = 10
