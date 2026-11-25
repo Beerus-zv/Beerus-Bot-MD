@@ -22,6 +22,7 @@ import qrcode from 'qrcode-terminal'
 import { db, contarMensaje, contarMensajeUsuario, alertasActivas, listarAlertas, obtenerAfk, quitarAfk, modoChat, algunModoActivo, palabraProhibidaEn, registrarAdvertencia, contarAdvertencias, limiteAdvertencias, borrarAdvertencias, alertasAutoActivas, configurarAlertasAuto, setAntiDelete, getAntiDelete, limpiarAntiDelete, obtenerEconomia, restarMonedas, primarioDe } from './database/db.js'
 import { obtenerMetadata, esAdmin, esMencionDelBot, extraerComandoTrasMencion, extraerPreguntaTrasMencion, tokenMencion, jidUsuario } from './lib/grupo.js'
 import { log, recordarGrupo, necesitaNombre, intentoNombre } from './lib/logger.js'
+import { VERSION } from './lib/tema.js'
 import { autoReaccionar } from './lib/autoreact.js'
 import { marcarLeido } from './lib/autoread.js'
 import { capturarAudioDeSticker } from './lib/multimedia.js'
@@ -45,7 +46,7 @@ const CATEGORIAS_COSTO_ORO = new Set(['gacha', 'descargas', 'entretenimiento', '
 
 // ───────────── Configuración ─────────────
 import { BOT_NAME, PREFIX, AUTH_DIR, MENCIONES_BOT, LOG_LEVEL, METODO_VINCULACION, NUMERO_VINCULACION, NAVEGADOR_WA } from './config.js'
-import { elegirVinculacion, formatearCodigo } from './lib/vinculacion.js'
+import { elegirVinculacion } from './lib/vinculacion.js'
 import { crearLogger } from './lib/logger-baileys.js'
 
 
@@ -1011,6 +1012,8 @@ let vinculacion = null
 // Estado de autenticacion (SQLite). Se abre una vez y se reutiliza en cada
 // reconexion: reabrir la base en cada intento dejaba handles sueltos.
 let authSesion = null
+// El banner se imprime una sola vez: las reconexiones no repiten la caja.
+let bannerMostrado = false
 
 const MAX_INTENTOS = 15
 const ESPERA_BASE = 3000
@@ -1142,6 +1145,15 @@ async function obtenerAuthSesion() {
 async function startBot() {
   const inicioArranque = performance.now()
 
+  if (!bannerMostrado) {
+    bannerMostrado = true
+    log.banner({
+      nombre: BOT_NAME,
+      prefijos: PREFIX.join(' '),
+      version: VERSION,
+    })
+  }
+
   // Si ya hay un socket vivo, se cierra antes de crear otro
   if (socketActivo) {
     cerrarSocket(socketActivo)
@@ -1251,9 +1263,8 @@ async function startBot() {
           sock
             .requestPairingCode(vinculacion.numero)
             .then((codigo) => {
-              console.log(`\n🔑 Código de vinculación: ${formatearCodigo(codigo)}`)
-              console.log('📱 En WhatsApp: Dispositivos vinculados > Vincular un dispositivo')
-              console.log('   > Vincular con el número de teléfono, e ingresa el código.\n')
+              log.titulo('Vinculación')
+              log.codigo(codigo)
             })
             .catch((err) => {
               codigoSolicitado = false
@@ -1261,7 +1272,8 @@ async function startBot() {
             })
         }
       } else {
-        console.log('📱 Escanea este QR desde WhatsApp > Dispositivos vinculados:')
+        log.titulo('Vinculación')
+        log.sistema('Escanea este QR: WhatsApp › Dispositivos vinculados › Vincular un dispositivo')
         qrcode.generate(qr, { small: true })
       }
     }
