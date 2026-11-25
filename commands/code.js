@@ -20,6 +20,8 @@ import {
   listarSubBots,
 } from '../lib/subbot.js'
 import { normalizarNumero, codigoPlano } from '../lib/vinculacion.js'
+import { informeVinculacion } from '../lib/diagnostico.js'
+import fs from 'node:fs'
 
 const AYUDA =
   '*SUB-BOTS*\n\n' +
@@ -27,6 +29,7 @@ const AYUDA =
   '• `/code` — vincula *tu* numero y te manda el codigo\n' +
   '• `/code <numero>` — vincula otro numero (digitos con codigo de pais)\n' +
   '• `/code list` — sesiones guardadas y su estado\n' +
+  '• `/code diag` — parches, reloj y traza del último intento\n' +
   '• `/code del <numero>` — cierra la sesion y borra sus credenciales\n\n' +
   'Ejemplo: `/code` o `/code 5215512345678`\n\n' +
   '_El codigo se pide en el WhatsApp de ese numero:_\n' +
@@ -97,8 +100,41 @@ async function enviarCodigo(entregar, codigo, numero, { renovado = false } = {})
   )
 }
 
-/** Texto de estado para una entrada de `listarSubBots` */
-function estadoLegible(entrada) {
+/** Version del paquete de Baileys instalado en este proceso. */
+function versionBaileys() {
+  try {
+    return (
+      JSON.parse(fs.readFileSync('node_modules/@whiskeysockets/baileys/package.json', 'utf8'))
+        ?.version || 'sin version'
+    )
+  } catch {
+    return 'no instalado'
+  }
+}
+
+/**
+ * Desfase entre el reloj de este servidor y el de WhatsApp.
+ *
+ * El emparejamiento firma y cifra con tiempos: un contenedor sin NTP puede ir
+ * minutos atrasado y el telefono no logra descifrar el paquete. Es la causa que
+ * no deja rastro en ningun log, asi que se mide y se muestra.
+ */
+async function desfaseReloj() {
+  try {
+    const respuesta = await fetch('https://web.whatsapp.com', {
+      method: 'HEAD',
+      signal: AbortSignal.timeout(6000),
+    })
+    const fecha = respuesta.headers.get('date')
+    if (!fecha) return 'sin dato'
+    const segundos = Math.round((Date.parse(fecha) - Date.now()) / 1000)
+    return `${segundos >= 0 ? '+' : ''}${segundos} s${Math.abs(segundos) > 20 ? ' ⚠' : ''}`
+  } catch {
+    return 'sin conexión'
+  }
+}
+
+/** Texto de estado para una entrada de `listarSubBots` */function estadoLegible(entrada) {
   switch (entrada.estado) {
     case 'conectado':
       return 'conectado'
@@ -125,6 +161,14 @@ export default async ({ sock, jid, msg, args, sender }) => {
 
   if (['help', 'ayuda', '?', 'menu'].includes(accion)) {
     return responder(AYUDA)
+  }
+
+  // ───────────── Diagnóstico ─────────────
+  // En un panel la consola la ocupa el bot: este es el unico canal para ver
+  // que paso durante un intento de vinculacion.
+  if (['diag', 'diagnostico', 'traza', 'log'].includes(accion)) {
+    const [reloj, version] = await Promise.all([desfaseReloj(), versionBaileys()])
+    return responder(informeVinculacion({ reloj, version }))
   }
 
   // ───────────── Lista ─────────────
