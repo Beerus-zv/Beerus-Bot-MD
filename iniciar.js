@@ -15,6 +15,11 @@
  */
 import './lib/arranque.js'
 
+// Los parches de vinculacion de Baileys tienen que estar en disco antes de que
+// `index.js` cargue el paquete. El postinstall los aplica, pero un despliegue
+// que solo hace git pull y reinicia no pasa por ahi.
+import './scripts/parche-baileys.mjs'
+
 import { AUTO_ACTUALIZAR, RAMA_ACTUALIZACION } from './config.js'
 import { actualizarBot } from './lib/actualizador.js'
 

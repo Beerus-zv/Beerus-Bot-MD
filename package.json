@@ -13,7 +13,8 @@
     "cartas": "node scripts/refrescar-cartas.mjs",
     "banners": "node scripts/renovar-banners.mjs",
     "rarezas": "node scripts/sincronizar-rarezas.mjs",
-    "graphify": "node scripts/graphify.mjs"
+    "graphify": "node scripts/graphify.mjs",
+    "postinstall": "node scripts/parche-baileys.mjs"
   },
   "keywords": [
     "whatsapp",
