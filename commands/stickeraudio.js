@@ -4,6 +4,7 @@ import {
   detectarTipoMedia,
   descargarMedia,
   duracionDeBuffer,
+  chunksWebp,
   stickerDesdeVideoInfo,
   audioDesdeVideo,
   enviarSticker,
@@ -137,14 +138,19 @@ async function rehacerStickerConAudio({ sock, jid, msg, fuente }) {
 
     const { audio, origen, claves } = await audioDeSticker(sock, fuente, {
       idSticker: contextoDeCita(msg)?.stanzaId ?? msg?.key?.id,
+      buffer,
     })
 
     if (!audio) {
       // Sin audio no hay nada que pegar: el sonido no vive en el WebP
       const detalle = claves.map((c) => c.slice(0, 16)).join(' | ') || 'sin claves'
+      const chunks = chunksWebp(buffer)
+        .map((c) => `${c.nombre.trim() || '?'}(${c.datos.length})`)
+        .join(' ')
       console.log(
         `[stickeraudio] sticker sin audio · campo 26: ${Boolean(fuente.audioMessage)} · busque: ${detalle}`
       )
+      console.log(`[stickeraudio] chunks del webp: ${chunks || 'ninguno'}`)
 
       await enviarSticker(sock, jid, buffer, msg)
       await responder(
