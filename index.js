@@ -416,6 +416,7 @@ const commands = {
   allbirthdays: C.allbirthdays,
   marryhistory: C.marryhistory,
   toimg: C.toimg,
+  tovideo: C.tovideo,
   pfp: C.pfp,
   // ── Interacciones nuevas (Neko) ──
   dance,
@@ -615,6 +616,8 @@ const commands = {
   setbio: C.setdescription,
   descripcion: C.setdescription,
   toimage: C.toimg,
+  tomp4: C.tovideo,
+  stkvideo: C.tovideo,
   getpic: C.pfp,
   foto: C.pfp,
   // ── Alias de NSFW ──
