@@ -26,6 +26,19 @@ import { estadoBaileys } from './parche-baileys.mjs'
 const linea = (titulo) => console.log(`\n── ${titulo} ${'─'.repeat(Math.max(0, 58 - titulo.length))}`)
 const dato = (clave, valor) => console.log(`  ${String(clave).padEnd(24)} ${valor}`)
 
+/** Version del paquete instalado, o null. */
+function versionPaquete() {
+  try {
+    return JSON.parse(fs.readFileSync('node_modules/@whiskeysockets/baileys/package.json', 'utf8'))
+      ?.version
+  } catch {
+    return null
+  }
+}
+
+/** El stub local permite importar pero no conectar: no sirve para emparejar. */
+const ES_STUB = String(versionPaquete() || '').includes('stub')
+
 // ───────────── Entorno ─────────────
 
 async function reloj() {
@@ -67,6 +80,12 @@ async function paquete() {
 
   dato('version', pkg?.version || 'no instalado')
   dato('node', process.version)
+
+  if (String(pkg?.version || '').includes('stub')) {
+    console.log('\n  ⚠ ESTE ES EL STUB LOCAL. No hay Baileys real aqui: el diagnostico')
+    console.log('    de vinculacion solo sirve corriendo en el servidor, donde el')
+    console.log('    paquete esta instalado de verdad (/home/container en el VPS).')
+  }
 
   const estado = estadoBaileys()
   dato('ruta', estado.ruta || 'no encontrada')
@@ -198,15 +217,34 @@ async function sesiones() {
 async function abrir(numero) {
   linea(`emparejamiento de prueba · ${numero}`)
 
+  if (ES_STUB) {
+    console.log('  el paquete instalado es el stub local: no hay socket que abrir.')
+    console.log('  corre este diagnostico en el servidor, donde Baileys esta instalado.')
+    return
+  }
+
   const baileys = await import('@whiskeysockets/baileys')
   const { useSqliteAuthState } = await import('../lib/auth-state.js')
+
+  // El paquete real expone la funcion en `default`; se acepta tambien
+  // `makeWASocket` por si el build cambia.
+  const makeWASocket = [baileys.default, baileys.makeWASocket, baileys.default?.default].find(
+    (f) => typeof f === 'function'
+  )
+  if (!makeWASocket) {
+    console.log('  el paquete instalado no expone makeWASocket.')
+    return
+  }
 
   const carpeta = path.resolve('data', 'diagnostico', numero)
   fs.rmSync(carpeta, { recursive: true, force: true })
   fs.mkdirSync(carpeta, { recursive: true })
 
   const { state, saveCreds, cerrar } = await useSqliteAuthState(carpeta)
-  const version = await baileys.fetchLatestBaileysVersion().then((v) => v.version).catch(() => null)
+  const version = await baileys
+    .fetchLatestBaileysVersion()
+    .then((v) => v.version)
+    .catch(() => null)
 
   console.log('  abriendo socket…')
 
@@ -224,9 +262,14 @@ async function abrir(numero) {
     fatal: (...args) => console.log('  [fatal]', ...args),
   }
 
-  const sock = baileys.default({
+  const sock = makeWASocket({
     ...(version ? { version } : {}),
-    auth: { creds: state.creds, keys: baileys.makeCacheableSignalKeyStore(state.keys) },
+    auth: {
+      creds: state.creds,
+      keys: baileys.makeCacheableSignalKeyStore
+        ? baileys.makeCacheableSignalKeyStore(state.keys)
+        : state.keys,
+    },
     browser: ['Beerus Bot MD', 'Firefox', '2.1.0'],
     logger: consola,
   })
