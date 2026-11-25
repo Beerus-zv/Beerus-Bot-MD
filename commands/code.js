@@ -91,7 +91,7 @@ async function enviarCodigo(entregar, codigo, numero, { renovado = false } = {})
       `En el WhatsApp de ese numero:\n` +
       `Ajustes > Dispositivos vinculados > Vincular un dispositivo\n` +
       `> Vincular con numero de telefono.\n\n` +
-      `_Copia el codigo del mensaje de arriba. Caduca en ~1 minuto y el bot manda uno nuevo solo; si llega otro, usa el ultimo._`
+      `_Copia el codigo del mensaje de arriba: son 8 caracteres, el guion lo pone WhatsApp. Si vence, el bot manda otro solo — usa siempre el ultimo._`
   )
 }
 
@@ -222,7 +222,7 @@ export default async ({ sock, jid, msg, args, sender }) => {
       await enviarCodigo(entregar, codigo, num, { renovado })
     },
     alError: async (error, num) => {
-      await entregar(`No se pudo generar el codigo para *${num}*: ${error}`)
+      await entregar(`❌ No se pudo vincular *${num}*.\n_${error}_`)
     },
   })
 
