@@ -9,6 +9,8 @@ import {
   audioDesdeVideo,
   enviarSticker,
   enviarStickerConAudio,
+  comprimirSticker,
+  stickerPesaDemasiado,
   DURACION_MAXIMA_STICKER,
 } from '../lib/multimedia.js'
 import { audioDeSticker } from '../lib/sticker-video.js'
@@ -206,15 +208,33 @@ async function manejar({ sock, jid, msg, args }) {
 async function rehacerStickerConAudio({ sock, jid, msg, fuente }) {
   const responder = (texto) => sock.sendMessage(jid, { text: texto, quoted: msg })
 
-  const buffer = await conLimite(
+  const descargado = await conLimite(
     descargarMedia(sock, fuente),
     LIMITE_DESCARGA_MS,
     'descarga'
   )
 
-  if (!buffer?.length) {
+  if (!descargado?.length) {
     await responder('⚠️ *No pude descargar el sticker.* Inténtalo otra vez.')
     return
+  }
+
+  // Un sticker que llega hecho puede pasar de los 500 KB de WhatsApp: el
+  // cliente acepta el mensaje y despues no lo reproduce. Se recomprime antes
+  // de firmar, no despues.
+  let buffer = descargado
+  let recomprimido = false
+
+  if (stickerPesaDemasiado(buffer)) {
+    log.depuracion(`stickeraudio · sticker pesado (${(buffer.length / 1024).toFixed(0)} KB), recomprimiendo`)
+    try {
+      const comprimido = await comprimirSticker(buffer, { duracion: DURACION_MAXIMA_STICKER })
+      buffer = comprimido.buffer
+      recomprimido = true
+    } catch (err) {
+      // Mejor el sticker tal cual que nada: se avisa abajo.
+      log.aviso('stickeraudio · no pude recomprimir el sticker', err?.message)
+    }
   }
 
   const { audio, origen, claves } = await audioDeSticker(sock, fuente, {
@@ -254,5 +274,8 @@ async function rehacerStickerConAudio({ sock, jid, msg, fuente }) {
     return
   }
 
-  log.depuracion(`stickeraudio · sticker re-firmado · audio ${origen} · ${segundos ?? '?'}s`)
+  log.depuracion(
+    `stickeraudio · sticker re-firmado · audio ${origen} · ${segundos ?? '?'}s · ` +
+      `${(buffer.length / 1024).toFixed(0)} KB${recomprimido ? ' (recomprimido)' : ''}`
+  )
 }
