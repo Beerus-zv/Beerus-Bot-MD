@@ -1,14 +1,22 @@
 import { esOwnerMsg } from '../lib/owner.js'
 import { actualizarBot } from '../lib/actualizador.js'
+import { recargarComandos } from '../lib/loader.js'
+import { relanzarEnCaliente } from '../lib/relanzar.js'
 import { log } from '../lib/logger.js'
 
 /**
- * Actualiza el bot desde GitHub y reinicia.
- * Solo el owner puede ejecutarlo.
- * Uso: .update
+ * Actualiza el bot desde GitHub y aplica los cambios sin intervencion.
+ *
+ * Solo el owner puede ejecutarlo. Uso: `.update`
+ *
+ * Dos caminos, porque Node no puede descargar un modulo ya importado:
+ *   - cambios solo en `commands/`: se recargan en el acto, el socket ni se
+ *     entera y no hay corte.
+ *   - cambios en `index.js`, `lib/`, `database/` o dependencias: se lanza un
+ *     proceso nuevo que espera a que este muera (y libere el bloqueo de
+ *     instancia) y arranca con el codigo nuevo.
  */
 export default async ({ sock, jid, msg, sender }) => {
-  // Solo el owner
   if (!esOwnerMsg({ msg, sender, sock })) {
     await sock.sendMessage(jid, {
       text: '⛔ Solo el propietario puede actualizar el bot.',
@@ -23,15 +31,37 @@ export default async ({ sock, jid, msg, sender }) => {
   })
 
   try {
-    const resultado = actualizarBot()
+    // `forzar`: el comando es una orden explicita. Sin esto, la marca de la
+    // ultima comprobacion (6 h) hacia que `.update` no mirara el remoto.
+    const resultado = actualizarBot({ forzar: true })
+
+    if (resultado.estado === 'actualizado') {
+      const cabecera = `📦 Versión: v${resultado.de} → v${resultado.a}`
+      const deps = resultado.dependencias ? '\n📚 Dependencias instaladas.' : ''
+
+      if (resultado.nucleo) {
+        const aviso =
+          `✅ *Bot actualizado*\n\n${cabecera}${deps}\n\n` +
+          '♻️ Reiniciando en caliente: el socket vuelve solo en unos segundos.'
+        await sock.sendMessage(jid, { text: aviso, quoted: safeQuote(msg) })
+        salirConReinicio()
+        return
+      }
+
+      const recarga = await recargarComandos({ archivos: resultado.archivos })
+      const partes = [`✅ *Bot actualizado en caliente*\n\n${cabecera}`]
+      partes.push(`♻️ Registro recargado (${recarga.total} comandos) sin reiniciar el socket.`)
+      if (recarga.nuevos.length) partes.push(`➕ Nuevos: ${recarga.nuevos.join(', ')}`)
+      if (recarga.quitados.length) partes.push(`➖ Quitados: ${recarga.quitados.join(', ')}`)
+      if (recarga.errores.length) {
+        partes.push(`⚠️ No cargaron:\n${recarga.errores.slice(0, 5).map((e) => `· ${e}`).join('\n')}`)
+      }
+      await sock.sendMessage(jid, { text: partes.join('\n'), quoted: safeQuote(msg) })
+      return
+    }
 
     let texto = ''
     switch (resultado.estado) {
-      case 'actualizado':
-        texto = `✅ *Bot actualizado*\n\n` +
-          `📦 Versión: v${resultado.de} → v${resultado.a}\n\n` +
-          `♻️ Reiniciando para aplicar los cambios...`
-        break
       case 'al-dia':
         texto = `✅ El bot ya está actualizado (v${resultado.de || '?'}).`
         break
@@ -55,15 +85,6 @@ export default async ({ sock, jid, msg, sender }) => {
     }
 
     await sock.sendMessage(jid, { text: texto, quoted: safeQuote(msg) })
-
-    // Si se actualizó, reiniciar el proceso
-    if (resultado.estado === 'actualizado') {
-      log.sistema('🔁 Reiniciando el bot tras actualización...')
-      // Esperar un poco para que se envíe el mensaje
-      setTimeout(() => {
-        process.exit(0)
-      }, 1500)
-    }
   } catch (err) {
     log.error('Error en comando .update', err)
     await sock.sendMessage(jid, {
@@ -71,6 +92,25 @@ export default async ({ sock, jid, msg, sender }) => {
       quoted: safeQuote(msg),
     })
   }
+}
+
+/**
+ * Lanza el proceso nuevo y termina este.
+ *
+ * El lanzador espera a que este proceso muera: recien ahi toma el bloqueo y
+ * abre el socket, asi no hay dos copias sobre la misma sesion. Si el lanzador
+ * no se puede crear, el bot sigue vivo con el codigo viejo y lo dice.
+ */
+function salirConReinicio() {
+  try {
+    const lanzador = relanzarEnCaliente({ entrada: 'index.js', esperaMs: 1500 })
+    log.sistema(`🔁 Reinicio en caliente programado (lanzador ${lanzador}).`)
+  } catch (err) {
+    log.error(`No se pudo programar el reinicio: ${err?.message || err}. Reinicia a mano.`)
+    return
+  }
+  // Margen para que el mensaje salga antes de cerrar el socket.
+  setTimeout(() => process.exit(0), 1500)
 }
 
 /**

@@ -32,7 +32,7 @@ import { procesarCambioParticipantes } from './lib/bienvenida.js'
 import { alertaAdmin } from './lib/alertas.js'
 import { realinearRarezasLocales, sincronizarRarezas } from './lib/gacha-internet.js'
 import { adquirirBloqueo, liberarBloqueo } from './lib/instancia.js'
-import { cargarComandos } from './lib/loader.js'
+import { cargarComandos, conectarRegistro } from './lib/loader.js'
 import { useSqliteAuthState } from './lib/auth-state.js'
 import { COMANDOS_VIP, esVip, jidsDe } from './lib/vip.js'
 import { prefijosBot, modoPrivado, nombreBot } from './lib/ajustes-bot.js'
@@ -927,6 +927,10 @@ const commands = {
   anticall: anticallModo,
   antillamadas: anticallModo,
 }
+
+// El cargador guarda esta referencia para poder recargar comandos en caliente
+// (`/update`) y para sumar los archivos nuevos que traiga un `git pull`.
+conectarRegistro(commands)
 
 // ───────────── Utilidades ─────────────
 function extraerTexto(message) {
