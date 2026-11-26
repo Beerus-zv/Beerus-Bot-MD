@@ -38,10 +38,16 @@ export default async ({ sock, jid, msg, sender }) => {
     if (resultado.estado === 'actualizado') {
       const cabecera = `📦 Versión: v${resultado.de} → v${resultado.a}`
       const deps = resultado.dependencias ? '\n📚 Dependencias instaladas.' : ''
+      const locales =
+        resultado.locales === 'guardados'
+          ? '\n💾 Tus cambios locales se guardaron y volvieron a aplicar.'
+          : resultado.locales === 'conflicto'
+            ? '\n⚠️ Tus cambios locales chocan con el código nuevo: quedaron en `git stash`. Recuperalos con `git stash pop`.'
+            : ''
 
       if (resultado.nucleo) {
         const aviso =
-          `✅ *Bot actualizado*\n\n${cabecera}${deps}\n\n` +
+          `✅ *Bot actualizado*\n\n${cabecera}${deps}${locales}\n\n` +
           '♻️ Reiniciando en caliente: el socket vuelve solo en unos segundos.'
         await sock.sendMessage(jid, { text: aviso, quoted: safeQuote(msg) })
         salirConReinicio()
@@ -49,7 +55,7 @@ export default async ({ sock, jid, msg, sender }) => {
       }
 
       const recarga = await recargarComandos({ archivos: resultado.archivos })
-      const partes = [`✅ *Bot actualizado en caliente*\n\n${cabecera}`]
+      const partes = [`✅ *Bot actualizado en caliente*\n\n${cabecera}${deps}${locales}`]
       partes.push(`♻️ Registro recargado (${recarga.total} comandos) sin reiniciar el socket.`)
       if (recarga.nuevos.length) partes.push(`➕ Nuevos: ${recarga.nuevos.join(', ')}`)
       if (recarga.quitados.length) partes.push(`➖ Quitados: ${recarga.quitados.join(', ')}`)
@@ -66,8 +72,8 @@ export default async ({ sock, jid, msg, sender }) => {
         texto = `✅ El bot ya está actualizado (v${resultado.de || '?'}).`
         break
       case 'cambios-locales':
-        texto = `⚠️ Hay actualizaciones disponibles, pero hay cambios locales sin guardar.\n` +
-          `Haz commit o descártalos para actualizar.`
+        texto = `⚠️ Hay actualizaciones, pero no pude guardar tus cambios locales ` +
+          `para reaplicarlos (revisá \`git status\`). No se actualizó nada.`
         break
       case 'divergido':
         texto = `⚠️ Hay actualizaciones, pero tu rama tiene commits propios.\n` +
