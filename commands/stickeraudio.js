@@ -137,8 +137,8 @@ async function manejar({ sock, jid, msg, args }) {
     return null
   })
 
-  // El sticker manda el ritmo: si el clip se recorta para entrar en los
-  // 500 KB de WhatsApp, el audio tiene que cortarse igual o el cliente
+  // El sticker manda el ritmo: si el clip se recorta para entrar en el tope
+  // de peso de WhatsApp, el audio tiene que cortarse igual o el cliente
   // reproduce el sticker como GIF mudo.
   const {
     buffer: sticker,
@@ -167,7 +167,7 @@ async function manejar({ sock, jid, msg, args }) {
   if (recortado) {
     const segundos = Math.round(duracionReal * 10) / 10
     await sock.sendMessage(jid, {
-      text: `✂️ El sticker quedó en ${segundos}s porque no entraba en los 500 KB de WhatsApp.`,
+      text: `✂️ El sticker quedó en ${segundos}s porque no entraba en el límite de peso de WhatsApp.`,
     })
   }
 
@@ -219,7 +219,7 @@ async function rehacerStickerConAudio({ sock, jid, msg, fuente }) {
     return
   }
 
-  // Un sticker que llega hecho puede pasar de los 500 KB de WhatsApp: el
+  // Un sticker que llega hecho puede pasar del tope de WhatsApp (1 MB): el
   // cliente acepta el mensaje y despues no lo reproduce. Se recomprime antes
   // de firmar, no despues.
   let buffer = descargado
