@@ -219,7 +219,7 @@ async function rehacerStickerConAudio({ sock, jid, msg, fuente }) {
     return
   }
 
-  // Un sticker que llega hecho puede pasar del tope de WhatsApp (1 MB): el
+  // Un sticker que llega hecho puede pasar del presupuesto de peso: el
   // cliente acepta el mensaje y despues no lo reproduce. Se recomprime antes
   // de firmar, no despues.
   let buffer = descargado
