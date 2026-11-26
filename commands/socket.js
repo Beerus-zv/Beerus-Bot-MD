@@ -17,16 +17,18 @@
  *   /setbotlink <url|reset>    link del menu
  *   /setbotcurrency <nombre>   nombre de la moneda
  *   /setbotprefix <. / #>      prefijos aceptados
- *   /setbanner <url|reset>     banner fijo del menu
+ *   /setbanner <url|imagen citada|reset>  banner fijo del menu
  *   /seticon <emoji|reset>     icono que precede al nombre
  *   /setimage [url|reset]      foto de perfil del socket
  *   /setusername <nombre>      nombre de perfil (pushname)
  */
 import { esOwnerMsg } from '../lib/owner.js'
 import { obtenerMetadata } from '../lib/grupo.js'
-import { descargarMedia, obtenerCitado } from '../lib/multimedia.js'
+import { descargarMedia, resolverFuenteMedia } from '../lib/multimedia.js'
 import { listarSockets, contarSockets } from '../lib/sockets.js'
 import { TEMA, VERSION } from '../lib/tema.js'
+import fs from 'node:fs'
+import path from 'node:path'
 import {
   CLAVES,
   nombreBot,
@@ -54,12 +56,12 @@ const AYUDA =
   '• `/prefix` — prefijos aceptados\n' +
   '• `/join <link>` — unir el bot a un grupo\n' +
   '• `/self on|off` — modo privado\n' +
-  '• `/setbotname <nombre>`\n' +
+  '• `/setbotname <nombre>` (o `/nombrebot`)\n' +
   '• `/setbotowner <@usuario>`\n' +
   '• `/setbotlink <url|reset>`\n' +
   '• `/setbotcurrency <nombre>`\n' +
   '• `/setbotprefix <prefijos>`\n' +
-  '• `/setbanner <url|reset>`\n' +
+  '• `/setbanner <url|imagen citada|reset>`\n' +
   '• `/seticon <emoji|reset>`\n' +
   '• `/setimage [url|reset]`\n' +
   '• `/setusername <nombre>`\n' +
@@ -106,6 +108,73 @@ async function imagenDesdeUrl(url) {
   const buffer = Buffer.from(await respuesta.arrayBuffer())
   if (buffer.length > 8 * 1024 * 1024) throw new Error('la imagen pasa de 8 MB')
   return buffer
+}
+
+/**
+ * Carpeta del banner fijado desde una imagen.
+ *
+ * Va aparte de `data/banners/` (la cache del menu aleatorio) para que limpiar
+ * o reponer esa cache no borre el banner que eligio el owner.
+ */
+const DIR_BANNER_FIJO = path.resolve('data', 'banner-fijo')
+
+/** Extension de archivo segun el mimetype que manda WhatsApp */
+function extensionDeImagen(mimetype) {
+  const tipo = String(mimetype || '').toLowerCase()
+  if (tipo.includes('png')) return 'png'
+  if (tipo.includes('webp')) return 'webp'
+  if (tipo.includes('gif')) return 'gif'
+  return 'jpg'
+}
+
+/**
+ * Guarda el banner en disco y devuelve la ruta relativa que se guarda en el
+ * ajuste.
+ *
+ * Se guarda el archivo y no la URL porque una imagen citada no tiene URL
+ * estable: el archivo vive en el mensaje y el link de WhatsApp caduca. El menu
+ * ya sabe leer una ruta local (`commands/menu.js`).
+ */
+function guardarBannerLocal(buffer, mimetype) {
+  if (!buffer?.length) throw new Error('la imagen vino vacía')
+  if (buffer.length > 8 * 1024 * 1024) throw new Error('la imagen pasa de 8 MB')
+  fs.mkdirSync(DIR_BANNER_FIJO, { recursive: true })
+  // Un solo banner fijo a la vez: no tiene sentido acumular imagenes viejas.
+  for (const viejo of fs.readdirSync(DIR_BANNER_FIJO)) {
+    fs.rmSync(path.join(DIR_BANNER_FIJO, viejo), { force: true, recursive: true })
+  }
+  const nombre = `banner.${extensionDeImagen(mimetype)}`
+  fs.writeFileSync(path.join(DIR_BANNER_FIJO, nombre), buffer)
+  return `data/banner-fijo/${nombre}`
+}
+
+/** Borra del disco el banner fijado (si habia uno) */
+function borrarBannerLocal() {
+  try {
+    if (!fs.existsSync(DIR_BANNER_FIJO)) return
+    for (const viejo of fs.readdirSync(DIR_BANNER_FIJO)) {
+      fs.rmSync(path.join(DIR_BANNER_FIJO, viejo), { force: true, recursive: true })
+    }
+  } catch {
+    // Si no se puede borrar, el ajuste queda limpio igual: el menu no lo usa.
+  }
+}
+
+/**
+ * Imagen a usar como fuente: la citada (respuesta) o la del propio mensaje.
+ *
+ * Descarta stickers a proposito: un sticker puede ser WebP animado y no sirve
+ * como banner ni como foto de perfil.
+ *
+ * @returns {{ mensaje: object, mimetype: string } | null}
+ */
+function imagenDeMensaje(msg) {
+  const fuente = resolverFuenteMedia(msg)
+  if (!fuente) return null
+  const contenido = fuente.mensaje?.message ?? fuente.mensaje
+  if (contenido?.stickerMessage) return null
+  if (!contenido?.imageMessage) return null
+  return { mensaje: fuente.mensaje, mimetype: contenido.imageMessage.mimetype || 'image/jpeg' }
 }
 
 /** Estado completo en texto */
@@ -266,23 +335,47 @@ export default async ({ sock, jid, msg, args, sender }) => {
 
     case 'setbanner':
     case 'setmenubanner': {
-      if (!texto) {
-        return responder(
-          `🖼️ *Banner:* ${bannerFijado() ? 'fijo' : 'al azar'}\n\n` +
-            'Uso: `/setbanner <url de imagen>`\nPara volver al aleatorio: `/setbanner reset`'
-        )
-      }
-      if (['reset', 'aleatorio', 'random', 'borrar'].includes(texto.toLowerCase())) {
+      const pedido = texto.trim()
+
+      if (['reset', 'aleatorio', 'random', 'borrar'].includes(pedido.toLowerCase())) {
+        borrarBannerLocal()
         fijarAjuste(CLAVES.banner, '')
         return responder('🖼️ Banner restablecido: vuelve a elegirse al azar en cada menú.')
       }
-      if (!/^https?:\/\//i.test(texto)) return responder('❌ Necesito una URL de imagen (http/https).')
+
+      // Sin texto: se toma la imagen citada o la del propio mensaje, igual que
+      // `/setimage`. La imagen se guarda en disco porque el link de WhatsApp
+      // del mensaje no dura.
+      if (!pedido) {
+        const imagen = imagenDeMensaje(msg)
+        if (!imagen) {
+          return responder(
+            `🖼️ *Banner:* ${bannerFijado() ? 'fijo' : 'al azar'}\n\n` +
+              'Uso: `/setbanner <url de imagen>`\n' +
+              'O responde a una imagen con `/setbanner`.\n' +
+              'Para volver al aleatorio: `/setbanner reset`'
+          )
+        }
+        try {
+          const buffer = await descargarMedia(sock, imagen.mensaje)
+          const ruta = guardarBannerLocal(buffer, imagen.mimetype)
+          fijarAjuste(CLAVES.banner, ruta)
+          return responder('✅ *Banner fijado* con la imagen que enviaste. Se usa en cada menú hasta que lo cambies.')
+        } catch (err) {
+          return responder(`❌ No pude usar esa imagen: ${err.message}`)
+        }
+      }
+
+      if (!/^https?:\/\//i.test(pedido)) {
+        return responder('❌ Necesito una URL de imagen (http/https) o una imagen citada.')
+      }
       try {
-        await imagenDesdeUrl(texto)
+        await imagenDesdeUrl(pedido)
       } catch (err) {
         return responder(`❌ No pude leer esa imagen: ${err.message}`)
       }
-      fijarAjuste(CLAVES.banner, texto)
+      borrarBannerLocal()
+      fijarAjuste(CLAVES.banner, pedido)
       return responder('✅ *Banner fijado.* El menú va a usar esta imagen hasta que lo cambies.')
     }
 
@@ -323,18 +416,15 @@ export default async ({ sock, jid, msg, args, sender }) => {
       }
 
       if (!pedido) {
-        // Sin argumento: se toma la imagen citada o la del propio mensaje
-        const fuente = obtenerCitado(msg) ? obtenerCitado(msg) : msg
-        const tieneImagen =
-          fuente?.message?.imageMessage || msg?.message?.imageMessage
-        if (!tieneImagen) {
+        const imagen = imagenDeMensaje(msg)
+        if (!imagen) {
           return responder(
             '🖼️ Responde a una imagen con `/setimage`, o usa `/setimage <url>`.\n' +
               'Para quitarla no se puede: WhatsApp no permite dejar el perfil sin foto.'
           )
         }
         try {
-          const buffer = await descargarMedia(sock, fuente)
+          const buffer = await descargarMedia(sock, imagen.mensaje)
           await sock.updateProfilePicture(sock.user.id, buffer)
           return responder('✅ *Foto de perfil actualizada.*')
         } catch (err) {

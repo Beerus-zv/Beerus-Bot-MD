@@ -149,6 +149,21 @@ const perezoso = (fabricar) => {
   }
 }
 
+/**
+ * Nombres con los que se reconoce una mencion al bot.
+ *
+ * `MENCIONES_BOT` viene de config.js y no cambia; `/setbotname` escribe en la
+ * base. Se lee aca con una cache corta para no consultar la base por cada
+ * mensaje, y el nombre nuevo empieza a responder a la mencion en segundos.
+ */
+let cacheMenciones = { en: 0, lista: [] }
+function mencionesBot() {
+  if (Date.now() - cacheMenciones.en < 5000) return cacheMenciones.lista
+  const lista = [...new Set([...MENCIONES_BOT, nombreBot()].map((n) => String(n || '').trim()).filter(Boolean))]
+  cacheMenciones = { en: Date.now(), lista }
+  return lista
+}
+
 /** Fabrica perezosa de interacciones (kiss, slap, hug y compania) */
 const fabricarInteraccion = (nombre, alias) =>
   perezoso(async () => (await import('./commands/interaccion.js')).fabricarInteraccion(nombre, alias))
@@ -888,6 +903,8 @@ const commands = {
   setbotlink: conSub(C.socket, 'setbotlink'),
   setbotname: conSub(C.socket, 'setbotname'),
   botname: conSub(C.socket, 'setbotname'),
+  nombrebot: conSub(C.socket, 'setbotname'),
+  renamebot: conSub(C.socket, 'setbotname'),
   setbotowner: conSub(C.socket, 'setbotowner'),
   setowner: conSub(C.socket, 'setbotowner'),
   setbotprefix: conSub(C.socket, 'setbotprefix'),
@@ -1164,7 +1181,7 @@ async function startBot() {
   if (!bannerMostrado) {
     bannerMostrado = true
     log.banner({
-      nombre: BOT_NAME,
+      nombre: nombreBot(),
       prefijos: PREFIX.join(' '),
       version: VERSION,
     })
@@ -1696,7 +1713,7 @@ const userSpamData = {}
               sender,
               esGrupo: false,
               commands: C,
-              BOT_NAME,
+              BOT_NAME: nombreBot(),
               PREFIX: prefijosActivos,
               db,
               jugadaSuelta: true,
@@ -1813,7 +1830,7 @@ const userSpamData = {}
               sender,
               esGrupo,
               commands,
-              BOT_NAME,
+              BOT_NAME: nombreBot(),
               PREFIX: prefijosActivos,
               db,
             })
@@ -1825,12 +1842,12 @@ const userSpamData = {}
         }
 
         // ── Menciones: el bot responde cuando lo llaman ──
-        if (!esMencionDelBot(msg, sock, MENCIONES_BOT)) return
+        if (!esMencionDelBot(msg, sock, mencionesBot())) return
 
         // Con el modo bot apagado (o solo admins) la mencion tambien duerme
         if (esGrupo && (!modoChat(jid, 'bot') || modoChat(jid, 'onlyadmin'))) return
 
-        const solicitado = extraerComandoTrasMencion(texto, MENCIONES_BOT)
+        const solicitado = extraerComandoTrasMencion(texto, mencionesBot())
         const nombre = solicitado?.nombre?.toLowerCase()
         const comando = nombre ? commands[nombre] : null
 
@@ -1856,7 +1873,7 @@ const userSpamData = {}
               sender,
               esGrupo,
               commands,
-              BOT_NAME,
+              BOT_NAME: nombreBot(),
               PREFIX: prefijosActivos,
               db,
             })
@@ -1868,7 +1885,7 @@ const userSpamData = {}
         }
 
         // Mención sin comando -> charla con Beerus (IA). Sin texto, saluda y da la ayuda
-        const pregunta = extraerPreguntaTrasMencion(texto, MENCIONES_BOT, sock)
+        const pregunta = extraerPreguntaTrasMencion(texto, mencionesBot(), sock)
 
         if (pregunta) {
           const terminarIA = log.comando({ nombre: 'ia', args: [pregunta], jid, via: 'mención' })
@@ -1885,7 +1902,7 @@ const userSpamData = {}
           jid,
           {
             text:
-              `🐱 ¿Quién osa despertar a *${BOT_NAME}*?\n\n` +
+              `🐱 ¿Quién osa despertar a *${nombreBot()}*?\n\n` +
               `Escríbeme tu pregunta después de mi nombre y te respondo, mortal.\n` +
               `💡 O usa *${PREFIX[0]}menu* para ver todo lo que puedo hacer.`,
           },
