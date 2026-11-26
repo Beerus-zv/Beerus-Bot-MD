@@ -19,7 +19,7 @@ import {
   eliminarSubBot,
   listarSubBots,
 } from '../lib/subbot.js'
-import { normalizarNumero, codigoPlano } from '../lib/vinculacion.js'
+import { normalizarNumero, codigoPlano, formatearNumero, avisoDeNumero } from '../lib/vinculacion.js'
 import { informeVinculacion } from '../lib/diagnostico.js'
 import fs from 'node:fs'
 
@@ -92,7 +92,7 @@ async function enviarCodigo(entregar, codigo, numero, { renovado = false } = {})
   await entregar(plano)
 
   await entregar(
-    `${renovado ? '*Codigo nuevo* — el anterior ya no sirve.' : '*Codigo de vinculacion*'} — ${numero}\n\n` +
+    `${renovado ? '*Codigo nuevo* — el anterior ya no sirve.' : '*Codigo de vinculacion*'} — ${formatearNumero(numero)}\n\n` +
       `En el WhatsApp de ese numero:\n` +
       `Ajustes > Dispositivos vinculados > Vincular un dispositivo\n` +
       `> Vincular con numero de telefono.\n\n` +
@@ -236,6 +236,16 @@ export default async ({ sock, jid, msg, args, sender }) => {
     return responder(`El numero *${numero}* ya esta vinculado y conectado.`)
   }
 
+  // Un digito de menos pasa la validacion de largo y revienta en el telefono
+  // con "comprueba que el numero es correcto". Se corta antes de pedir codigo.
+  const aviso = avisoDeNumero(numero)
+  if (aviso) {
+    return responder(
+      `❌ El numero no cuadra.\n\n${aviso}\n\n` +
+        `_Si escribis_ \`/code\` _sin numero, se usa el de este chat._`
+    )
+  }
+
   // Vincular el mismo numero del bot tumba la sesion principal (440).
   if (digitos(sock.user?.id) === numero) {
     return responder(
@@ -243,7 +253,9 @@ export default async ({ sock, jid, msg, args, sender }) => {
     )
   }
 
-  await responder(`Generando el codigo para *${numero}*...\n_Unos segundos._`)
+  await responder(
+    `Generando el codigo para *${formatearNumero(numero)}*...\n_Unos segundos._`
+  )
 
   // El codigo es personal: en grupos se manda por privado y, si el privado
   // falla (el usuario nunca hablo con el bot), se queda en el chat.
