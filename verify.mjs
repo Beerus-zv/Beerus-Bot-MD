@@ -1348,7 +1348,96 @@ if (
   mal('el menu no muestra la version de package.json', panelPrueba)
 }
 
-// ───────────── 15. Boorus NSFW: el archivo que llega ─────────────
+// ───────────── 15. Stickers: la firma deja el WebP valido ─────────────
+seccion('Stickers')
+
+{
+  const { firmarSticker, chunksWebp, esWebpAnimado } = await import('./lib/multimedia.js')
+
+  // sharp escribe un WebP estatico como `VP8 ` sin VP8X. Un chunk EXIF solo es
+  // legal si un VP8X lo declara, asi que la firma tiene que agregarlo delante.
+  const plano = await sharp({
+    create: { width: 640, height: 480, channels: 3, background: { r: 20, g: 90, b: 140 } },
+  })
+    .webp({ quality: 80 })
+    .toBuffer()
+
+  const firmado = firmarSticker(plano)
+  const trozos = chunksWebp(firmado)
+  const primero = trozos[0]?.nombre
+  const ultimo = trozos[trozos.length - 1]?.nombre
+  const vp8x = trozos.find((c) => c.nombre === 'VP8X')
+
+  if (primero === 'VP8X' && vp8x?.datos[0] & 0x08) {
+    ok('el sticker estatico lleva VP8X con el bit de EXIF')
+  } else {
+    mal('el sticker estatico no declara el EXIF en un VP8X', trozos.map((c) => c.nombre.trim()).join(','))
+  }
+
+  if (ultimo === 'EXIF') ok('el EXIF queda como ultimo chunk')
+  else mal('el EXIF no esta al final', ultimo)
+
+  const anchoLeido = vp8x ? vp8x.datos.readUIntLE(4, 3) + 1 : 0
+  const altoLeido = vp8x ? vp8x.datos.readUIntLE(7, 3) + 1 : 0
+  if (anchoLeido === 640 && altoLeido === 480) ok('el VP8X declara el lienzo real (640x480)')
+  else mal('el VP8X declara otro lienzo', `${anchoLeido}x${altoLeido}`)
+
+  if (firmado.readUInt32LE(4) + 8 === firmado.length) ok('el tamano RIFF cuadra con el archivo')
+  else mal('el tamano RIFF no cuadra', `${firmado.readUInt32LE(4) + 8} vs ${firmado.length}`)
+
+  const decodificado = await sharp(firmado).metadata()
+  if (decodificado.format === 'webp' && decodificado.width === 640) {
+    ok('el sticker firmado sigue decodificando')
+  } else {
+    mal('el sticker firmado no decodifica', decodificado.format)
+  }
+
+  // Firmar dos veces no debe duplicar VP8X ni EXIF
+  const otraVez = chunksWebp(firmarSticker(firmado)).map((c) => c.nombre.trim())
+  const unVp8x = otraVez.filter((n) => n === 'VP8X').length === 1
+  const unExif = otraVez.filter((n) => n === 'EXIF').length === 1
+  if (unVp8x && unExif) ok('firmar dos veces no duplica chunks')
+  else mal('firmar dos veces duplica chunks', otraVez.join(','))
+
+  // PNG con transparencia: sharp ya escribe VP8X/ALPH, hay que conservarlos
+  const conAlfa = await sharp({
+    create: { width: 300, height: 300, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+  })
+    .webp({ quality: 80 })
+    .toBuffer()
+  const firmadoAlfa = firmarSticker(conAlfa)
+  const vp8xAlfa = chunksWebp(firmadoAlfa).find((c) => c.nombre === 'VP8X')
+  const bitsAlfa = vp8xAlfa ? vp8xAlfa.datos[0] : 0
+  if (bitsAlfa & 0x08 && bitsAlfa & 0x10) ok('el sticker con alfa conserva ALPHA y suma EXIF')
+  else mal('el sticker con alfa pierde banderas del VP8X', `0x${bitsAlfa.toString(16)}`)
+
+  if (!esWebpAnimado(firmado)) ok('el estatico sigue marcado como estatico')
+  else mal('un estatico quedo marcado como animado')
+
+  // Animado real, si hay ffmpeg: el VP8X tiene que conservar ANIM (0x02)
+  const hayFfmpeg = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0
+  if (hayFfmpeg) {
+    const tmpAnim = path.join(os.tmpdir(), `verify-anim-${process.pid}.webp`)
+    spawnSync(
+      'ffmpeg',
+      [
+        '-y', '-f', 'lavfi', '-i', 'testsrc2=size=128x128:rate=8',
+        '-t', '1', '-c:v', 'libwebp', '-quality', '50', '-loop', '0', tmpAnim,
+      ],
+      { stdio: 'ignore' }
+    )
+    if (fs.existsSync(tmpAnim)) {
+      const animado = firmarSticker(fs.readFileSync(tmpAnim))
+      const bits = chunksWebp(animado)[0]
+      const animFlag = bits?.nombre === 'VP8X' && bits.datos[0] & 0x02 && bits.datos[0] & 0x08
+      if (animFlag && esWebpAnimado(animado)) ok('el sticker animado conserva ANIM y suma EXIF')
+      else mal('el sticker animado pierde la animacion al firmarse')
+      fs.rmSync(tmpAnim, { force: true })
+    }
+  }
+}
+
+// ───────────── 16. Boorus NSFW: el archivo que llega ─────────────
 seccion('Boorus NSFW')
 {
   const nsfw = await import('./lib/nsfw.js')
