@@ -58,7 +58,7 @@ const CATEGORIAS_COSTO_ORO = new Set(['gacha', 'descargas', 'entretenimiento', '
 
 // ───────────── Configuración ─────────────
 import { BOT_NAME, PREFIX, AUTH_DIR, MENCIONES_BOT, LOG_LEVEL, METODO_VINCULACION, NUMERO_VINCULACION, NAVEGADOR_WA } from './config.js'
-import { elegirVinculacion } from './lib/vinculacion.js'
+import { elegirVinculacion, navegadorVinculacion, esperar, ESPERA_CODIGO_MS } from './lib/vinculacion.js'
 import { crearLogger } from './lib/logger-baileys.js'
 
 
@@ -1192,10 +1192,33 @@ async function startBot() {
     })
   }
 
+  // Un intento de vinculacion por codigo deja `me` y `pairingCode` escritos
+  // antes de que WhatsApp confirme nada. Si ese intento no llego a buen puerto,
+  // el socket nuevo arranca con esas migas y sin `account`: el servidor recibe
+  // un login con credenciales que no existen y contesta 401. Se limpian antes
+  // de abrir, igual que hace lib/subbot.js.
+  if (!state.creds.account && (state.creds.me || state.creds.pairingCode)) {
+    log.aviso('Vinculación: se descarta el intento anterior a medias.')
+    delete state.creds.me
+    delete state.creds.pairingCode
+    try {
+      await saveCreds()
+    } catch (err) {
+      log.aviso(`Vinculación: no pude guardar la limpieza · ${err?.message || err}`)
+    }
+  }
+
   const sock = makeWASocket({
     ...(version ? { version } : {}),
     logger,
-    browser: [BOT_NAME, NAVEGADOR_WA, '2.1.0'], // nombre que verás en "Dispositivos vinculados"
+    // El navegador depende del metodo: por codigo se anuncia uno real de
+    // escritorio (como Luna-Botv6), que es lo que el telefono espera del
+    // emparejamiento; por QR se mantiene el nombre del bot.
+    browser: navegadorVinculacion({
+      metodo: vinculacion?.metodo,
+      nombre: BOT_NAME,
+      navegador: NAVEGADOR_WA,
+    }), // nombre que verás en "Dispositivos vinculados"
     auth: {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, logger),
@@ -1272,16 +1295,19 @@ async function startBot() {
         // El primer evento qr indica que el socket está listo para pedir el código
         if (!codigoSolicitado) {
           codigoSolicitado = true
-          sock
-            .requestPairingCode(vinculacion.numero)
-            .then((codigo) => {
+          ;(async () => {
+            try {
+              // Sin este margen el IQ de `companion_hello` sale en la misma
+              // carrera que la respuesta `pair-device` y se pierde.
+              await esperar(ESPERA_CODIGO_MS)
+              const codigo = await sock.requestPairingCode(vinculacion.numero)
               log.titulo('Vinculación')
               log.codigo(codigo)
-            })
-            .catch((err) => {
+            } catch (err) {
               codigoSolicitado = false
               log.error('No se pudo generar el código de vinculación', err)
-            })
+            }
+          })()
         }
       } else {
         log.titulo('Vinculación')
