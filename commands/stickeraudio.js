@@ -167,7 +167,7 @@ async function manejar({ sock, jid, msg, args }) {
   if (recortado) {
     const segundos = Math.round(duracionReal * 10) / 10
     await sock.sendMessage(jid, {
-      text: `✂️ El sticker quedó en ${segundos}s porque no entraba en el límite de peso de WhatsApp.`,
+      text: `✂️ El sticker quedó en ${segundos}s para entrar en el límite de peso.`
     })
   }
 
