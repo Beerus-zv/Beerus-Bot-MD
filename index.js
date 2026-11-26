@@ -881,6 +881,10 @@ const commands = {
   marcarleido: autoreadModo,
   // ── Configuración del socket (solo owner) ──
   socket: C.socket,
+  config: conSub(C.socket, 'config'),
+  configuracion: conSub(C.socket, 'config'),
+  ajustes: conSub(C.socket, 'config'),
+  settings: conSub(C.socket, 'config'),
   bots: conSub(C.socket, 'bots'),
   // Sub-bots: sesiones vinculadas desde el chat con /code
   code: C.code,

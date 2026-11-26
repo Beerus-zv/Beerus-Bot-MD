@@ -7,6 +7,7 @@
  * menu, asi que un cambio aplica sin reiniciar.
  *
  *   /socket                    estado de la configuracion
+ *   /config [n] [valor]        panel unico de ajustes (nombre, prefijos, owner...)
  *   /bots                      sesiones activas del proceso
  *   /prefix                    prefijos que acepta el bot
  *   /join <link|codigo>        unir el bot a un grupo
@@ -46,11 +47,13 @@ import {
   fijarModoPrivado,
   ownerConfigurado,
 } from '../lib/ajustes-bot.js'
+import { AJUSTES, buscarAjuste, panelConfig, aplicarAjuste } from '../lib/config-panel.js'
 
 const SEPARADOR = '*··········································*'
 
 const AYUDA =
   '⚙️ *Configuración del socket*\n\n' +
+  '• `/config` — panel único de ajustes\n' +
   '• `/socket` — estado actual\n' +
   '• `/bots` — sesiones activas\n' +
   '• `/prefix` — prefijos aceptados\n' +
@@ -177,6 +180,111 @@ function imagenDeMensaje(msg) {
   return { mensaje: fuente.mensaje, mimetype: contenido.imageMessage.mimetype || 'image/jpeg' }
 }
 
+/**
+ * Banner del menu desde el panel (`/config 8 ...`).
+ *
+ * Acepta `reset`, una URL, o una imagen citada / del propio mensaje. La imagen
+ * se guarda en disco porque el link de WhatsApp de un mensaje caduca.
+ */
+async function configBanner({ sock, msg, valor, responder }) {
+  const ajuste = buscarAjuste('banner')
+  const pedido = String(valor || '').trim()
+
+  if (['reset', 'reiniciar', 'borrar', 'fabrica', 'fábrica', 'default'].includes(pedido.toLowerCase())) {
+    borrarBannerLocal()
+    ajuste.reiniciar()
+    return responder('♻️ *Banner:* vuelve a elegirse al azar en cada menú.')
+  }
+
+  if (!pedido) {
+    const imagen = imagenDeMensaje(msg)
+    if (!imagen) {
+      return responder(
+        `🖼️ *Banner actual:* \`${ajuste.leer()}\`\n\n` +
+          'Responde a una imagen con `/config 8`, o pasa una URL: `/config 8 https://...`\n' +
+          'Para volver al aleatorio: `/config 8 reset`'
+      )
+    }
+    try {
+      const buffer = await descargarMedia(sock, imagen.mensaje)
+      const ruta = guardarBannerLocal(buffer, imagen.mimetype)
+      borrarBannerLocal()
+      ajuste.guardar(ruta)
+      return responder('✅ *Banner:* fijado con la imagen que enviaste.')
+    } catch (err) {
+      return responder(`❌ No pude usar esa imagen: ${err.message}`)
+    }
+  }
+
+  if (!/^https?:\/\//i.test(pedido)) {
+    return responder('❌ Necesito una URL de imagen o una imagen citada.')
+  }
+  try {
+    await imagenDesdeUrl(pedido)
+  } catch (err) {
+    return responder(`❌ No pude leer esa imagen: ${err.message}`)
+  }
+  // Si venia de un archivo local, se borra: el ajuste ahora apunta a la URL.
+  borrarBannerLocal()
+  ajuste.guardar(pedido)
+  return responder(`✅ *Banner:* fijado en ${pedido}`)
+}
+
+/** Foto de perfil desde el panel (`/config 10 ...`) */
+async function configFoto({ sock, msg, valor, responder }) {
+  const pedido = String(valor || '').trim()
+
+  if (['reset', 'borrar', 'quitar'].includes(pedido.toLowerCase())) {
+    return responder(
+      '❌ WhatsApp no permite dejar el perfil sin foto. ' +
+        'Para cambiarla responde a una imagen con `/config 10`.'
+    )
+  }
+
+  const imagen = pedido ? null : imagenDeMensaje(msg)
+  if (!pedido && !imagen) {
+    return responder(
+      '📸 Responde a una imagen con `/config 10`, o pasa una URL: `/config 10 https://...`'
+    )
+  }
+
+  try {
+    const buffer = pedido ? await imagenDesdeUrl(pedido) : await descargarMedia(sock, imagen.mensaje)
+    await sock.updateProfilePicture(sock.user.id, buffer)
+    return responder('✅ *Foto de perfil actualizada.*')
+  } catch (err) {
+    return responder(`❌ No pude cambiar la foto: ${err.message}`)
+  }
+}
+
+/** Nombre de perfil desde el panel (`/config 9 ...`) */
+async function configUsername({ sock, valor, responder }) {
+  const ajuste = buscarAjuste('username')
+  const pedido = String(valor || '').trim()
+
+  if (['reset', 'reiniciar', 'borrar', 'default'].includes(pedido.toLowerCase())) {
+    return responder(
+      `🪪 *Nombre de perfil actual:* ${usernameBot() || '(por defecto)'}\n\n` +
+        'WhatsApp no permite reponer el anterior solo: escribí el nombre que quieras.'
+    )
+  }
+
+  const revision = ajuste.validar(pedido)
+  if (!revision.ok) {
+    return responder(`❌ ${revision.error}\n\nEjemplo: \`${ajuste.ejemplo}\``)
+  }
+  if (typeof sock.updateProfileName !== 'function') {
+    return responder('❌ Esta sesión de Baileys no permite cambiar el nombre de perfil.')
+  }
+  try {
+    await sock.updateProfileName(revision.valor)
+  } catch (err) {
+    return responder(`❌ WhatsApp rechazó el cambio: ${err.message}`)
+  }
+  ajuste.guardar(revision.valor)
+  return responder(`✅ *Nombre de perfil:* \`${revision.valor}\``)
+}
+
 /** Estado completo en texto */
 function estadoConfig() {
   const prefijos = prefijosBot().join(' ')
@@ -193,7 +301,7 @@ function estadoConfig() {
     `• *Usuario:* ${usernameBot() || '(por defecto)'}\n` +
     `• *Modo privado:* ${modoPrivado() ? 'ON' : 'OFF'}\n` +
     `• *Versión:* ${VERSION}\n\n` +
-    `${SEPARADOR}\n_${AYUDA.split('\n')[0]}_\n_Cambia con_ \`/setbotname\`, \`/setbotprefix\`, \`/self\`_..._`
+    `${SEPARADOR}\n_${AYUDA.split('\n')[0]}_\n_El panel completo está en_ \`/config\``
   )
 }
 
@@ -205,7 +313,7 @@ export default async ({ sock, jid, msg, args, sender }) => {
   const responder = (t, extra = {}) => sock.sendMessage(jid, { text: t, quoted: msg, ...extra })
 
   // ── Lectura: nadie necesita permisos para consultar ──
-  if (['estado', 'status', 'info', 'socket', 'config'].includes(accion)) {
+  if (['estado', 'status', 'info', 'socket'].includes(accion)) {
     return responder(estadoConfig())
   }
 
@@ -243,6 +351,34 @@ export default async ({ sock, jid, msg, args, sender }) => {
   if (!esOwner) return responder(SOLO_OWNER)
 
   switch (accion) {
+    case 'config':
+    case 'configuracion':
+    case 'ajustes':
+    case 'settings': {
+      const referencia = resto[0]
+
+      // Sin argumentos: el panel entero
+      if (!referencia) return responder(panelConfig())
+
+      const ajuste = buscarAjuste(referencia)
+      if (!ajuste) {
+        return responder(
+          `❌ No existe el ajuste \`${referencia}\`.\n\n` +
+            `Los que hay: ${AJUSTES.map((a, i) => `\`${i + 1}\``).join(', ')}\n` +
+            'Usa `/config` para verlos con su valor actual.'
+        )
+      }
+
+      const valor = resto.slice(1).join(' ').trim()
+
+      // Los tres que necesitan el socket o un archivo
+      if (ajuste.especial === 'banner') return configBanner({ sock, msg, valor, responder })
+      if (ajuste.especial === 'foto') return configFoto({ sock, msg, valor, responder })
+      if (ajuste.especial === 'username') return configUsername({ sock, valor, responder })
+
+      return responder(aplicarAjuste(ajuste, valor).texto)
+    }
+
     case 'self': {
       const estado = accionBooleana(resto[0])
       if (estado === null) {
