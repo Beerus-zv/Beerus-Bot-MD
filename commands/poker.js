@@ -2,29 +2,27 @@
  * `/poker` — póker de cinco cartas con un solo descarte, contra la banca y
  * entre los jugadores de la mesa.
  *
- * En el grupo (la mesa):
+ * Todo pasa en el grupo, en el mismo chat donde se abre la mesa:
  *   /poker                 → reglas y como jugar
  *   /poker start [apuesta] → abre la mesa y paga tu apuesta
  *   /poker join            → te sientas (paga la apuesta)
  *   /poker go              → reparte las manos y empieza
  *   /poker mesa            → estado de la mesa
- *   /poker cancel          → el creador cierra la mesa y devuelve el oro
- *
- * En el privado del bot (tus jugadas, solo tú las ves):
- *   /poker                 → tu mano
+ *   /poker mano            → tu mano, como tarjeta de ver una vez
  *   /poker hold 1 3 5      → conservas esas cartas
  *   /poker draw            → cambias el resto y te plantas
  *   /poker stand           → te quedas con las cinco
  *   /poker fold            → abandonas la mano (pierdes la apuesta)
+ *   /poker cancel          → el creador cierra la mesa y devuelve el oro
  *
- * El grupo solo ve el progreso: quién se sienta, quién conserva, quién
- * cambia, quién se planta, y el resultado final.
+ * Las manos no salen del grupo: cada jugador recibe la suya como mensaje de
+ * ver una vez, con su mención. El grupo ve el progreso y, al final, la mesa
+ * destapada.
  */
 import {
   obtenerPoker,
   guardarPoker,
   borrarPoker,
-  todasLasPoker,
   obtenerUsuario,
   sumarMonedas,
   oroDisponible,
@@ -42,7 +40,8 @@ import {
 } from '../lib/poker.js'
 import { barajar } from '../lib/juegos.js'
 import { esGrupo, digitosJid, mencionDeParticipantes } from '../lib/grupo.js'
-import { enviarPrivado, participantesGrupo } from '../lib/privado.js'
+import { participantesGrupo } from '../lib/privado.js'
+import { enviarManoEnGrupo } from '../lib/mano-grupo.js'
 import { nombreLegible } from '../lib/economia.js'
 
 /** Apuesta maxima por mano: evita desbordes y apuestas absurdas */
@@ -51,6 +50,15 @@ const APUESTA_MAXIMA = 1_000_000
 const MAX_JUGADORES = 6
 /** Chats de grupo que ya vieron las reglas: no se abre mesa sin pasar por ellas */
 const reglasVistas = new Set()
+
+/** Subcomandos que son jugadas de la mano, no de la mesa */
+const JUGADAS = new Set([
+  'mano', 'hand', 'cartas',
+  'fold', 'retirar', 'retirarse',
+  'hold', 'guardar', 'conservar', 'keep',
+  'draw', 'cambio', 'cambiar', 'robar',
+  'stand', 'plantarse', 'quedarse', 'show',
+])
 
 const REGLAS = `🃏 *PÓKER — REGLAS*
 
@@ -89,9 +97,9 @@ rueda (A-2-3-4-5) es la escalera más baja.
 2. En el grupo: \`/poker start 50\` abre la mesa
 3. En el grupo: \`/poker join\` para sentarte
 4. En el grupo: \`/poker go\` reparte
-5. En mi privado: \`/poker\` para ver tu mano
-6. En mi privado: \`/poker hold 1 3 5\`, \`/poker draw\` o \`/poker stand\`
-7. En mi privado: \`/poker fold\` si te retiras
+5. \`/poker mano\` te muestra tu mano (mensaje de ver una vez)
+6. \`/poker hold 1 3 5\`, \`/poker draw\` o \`/poker stand\`
+7. \`/poker fold\` si te retiras
 
 _Cuando todos terminan, la mesa se destapa en el grupo._`
 
@@ -158,62 +166,41 @@ function mesaDeChat(chat) {
   return estado
 }
 
-/** Mesa del jugador, buscando en todas las mesas abiertas */
-function mesaDelJugador(quien) {
-  for (const fila of todasLasPoker()) {
-    let crudo
-    try {
-      crudo = JSON.parse(fila.estado)
-    } catch {
-      continue
-    }
-
-    const estado = normalizarMesa(crudo)
-    if (!estado) continue
-    if (estado.jugadores.some((j) => j.jid === quien)) {
-      return { chat: fila.chat, estado }
-    }
-  }
-  return null
-}
-
-/** Texto de la mano para el privado: cartas numeradas y la jugada */
-function tableroDM(estado, jugador) {
+/** Lineas de la tarjeta: cartas numeradas y la jugada que forman */
+function lineasManoPoker(estado, jugador) {
   const evaluada = evaluarMano(jugador.mano)
-  const lista = jugador.mano
-    .map((c, i) => `${i + 1}. ${nombreCarta(c)}${jugador.conservar.includes(i) ? ' 🔒' : ''}`)
-    .join('\n')
+  const lista = jugador.mano.map(
+    (c, i) => `${i + 1}. ${nombreCarta(c)}${jugador.conservar.includes(i) ? '  (guardada)' : ''}`
+  )
+  lista.push('')
+  lista.push(`Jugada: ${evaluada.nombre}`)
+  lista.push(`Apuesta: ${estado.apuesta} oro · Banca: 5 boca abajo`)
+  return lista
+}
+
+/** Pie de la tarjeta con las jugadas disponibles */
+function pieJugadas(prefijo) {
   return (
-    `${lista}\n\n` +
-    `› ${evaluada.nombre}\n` +
-    `💰 Apuesta: *${estado.apuesta}* oro\n` +
-    `🂠 Banca: *5* cartas boca abajo`
+    `Conservar: ${prefijo}poker hold 1 3 5\n` +
+    `Cambiar el resto: ${prefijo}poker draw\n` +
+    `Plantarse: ${prefijo}poker stand`
   )
 }
 
-/** Pie con las jugadas disponibles */
-function pieDM(prefijo) {
-  return (
-    `✎ \`${prefijo}poker hold 1 3 5\` para conservar\n` +
-    `✎ \`${prefijo}poker draw\` para cambiar el resto\n` +
-    `✎ \`${prefijo}poker stand\` para plantarte`
-  )
-}
-
-/** Envía (o reenvía) la mano al privado del jugador */
-async function enviarManoDM({ sock, chat, jugador, estado, prefijo, nota = '' }) {
-  const cola = jugador.listo
-    ? '⏳ Esperando a los demás jugadores…'
-    : `${pieDM(prefijo)}\n\n_Juega aquí, en privado: el grupo solo verá el progreso._`
-
-  return await enviarPrivado({
+/**
+ * Manda la mano al grupo como tarjeta de ver una vez, solo para ese jugador.
+ * El chat privado ya no participa: la mesa vive en el grupo.
+ */
+async function enviarManoAlGrupo({ sock, chat, jugador, estado, prefijo, nota = '' }) {
+  return await enviarManoEnGrupo({
     sock,
     grupo: chat,
     jugador: jugador.jid,
-    texto:
-      `🃏 *PÓKER — tu mano*\n\n${tableroDM(estado, jugador)}\n\n` +
-      (nota ? `${nota}\n\n` : '') +
-      cola,
+    titulo: 'PÓKER · tu mano',
+    subtitulo: jugador.listo ? 'Mano cerrada' : `Apuesta ${estado.apuesta} oro`,
+    lineas: lineasManoPoker(estado, jugador),
+    pie: jugador.listo ? 'Esperando a los demás jugadores' : pieJugadas(prefijo),
+    nota,
   })
 }
 
@@ -227,35 +214,9 @@ async function mencionEnGrupo(sock, chat, jugador) {
   }
 }
 
-/** Cambia los tokens de mención por el nombre visible: en privado no hay menciones */
-function textoParaDM(texto, menciones = []) {
-  let salida = String(texto || '')
-  for (const jid of menciones) {
-    const digitos = digitosJid(jid)
-    if (!digitos) continue
-    salida = salida.split(`@${digitos}`).join(nombreLegible(jid, obtenerUsuario))
-  }
-  return salida
-}
-
-/**
- * Publica el progreso en el grupo y manda la misma copia al privado de cada
- * jugador de la mesa. El que originó el aviso puede excluirse: ya recibió su
- * propio mensaje en privado.
- */
-async function anunciarProgreso({ sock, chat, estado, texto, menciones = [], excluir = null }) {
+/** Publica el progreso de la mesa en el grupo. No hay copias al privado. */
+async function anunciarProgreso({ sock, chat, texto, menciones = [] }) {
   await sock.sendMessage(chat, { text: texto, mentions: menciones })
-
-  const paraDM = textoParaDM(texto, menciones)
-  for (const j of estado.jugadores) {
-    if (j.abandonado || j.jid === excluir) continue
-    await enviarPrivado({
-      sock,
-      grupo: chat,
-      jugador: j.jid,
-      texto: `🃏 *PÓKER — progreso de la mesa*\n\n${paraDM}`,
-    })
-  }
 }
 
 /**
@@ -320,39 +281,6 @@ async function destaparMesa({ sock, chat, estado, prefijo }) {
       (pago ? `\n\n${pago}` : '') +
       `\n\n_Nueva mesa: \`${prefijo}poker start <apuesta>\`_`,
   })
-
-  // Cada jugador recibe su detalle por privado
-  for (const f of filas) {
-    const gano = ganadores.some((g) => g.jid === f.jid)
-    const resultado = bancaGana
-      ? '💀 La banca se lleva el bote.'
-      : gano
-        ? `🏆 Ganaste${pagoPorGanador ? ` *${pagoPorGanador}* oro` : ''}.`
-        : '💸 No llegó tu mano.'
-
-    await enviarPrivado({
-      sock,
-      grupo: chat,
-      jugador: f.jid,
-      texto:
-        `🃏 *PÓKER — resultado*\n\n` +
-        `*Tú* › \`${textoMano(f.mano)}\`\n` +
-        `│ ${f.evaluada.nombre}\n\n` +
-        `*Banca* › \`${textoMano(bancaFinal)}\`\n` +
-        `│ ${bancaEvaluada.nombre}\n\n` +
-        `${resultado}\n\n_Nueva mesa en el grupo._`,
-    })
-  }
-
-  // Quien se retiró también se entera
-  for (const j of estado.jugadores.filter((j) => j.abandonado)) {
-    await enviarPrivado({
-      sock,
-      grupo: chat,
-      jugador: j.jid,
-      texto: '🃏 *PÓKER* — te retiraste de esta mesa. La próxima es tuya.',
-    })
-  }
 }
 
 /** Cierra la mano de un jugador y, si ya no queda nadie, destapa la mesa */
@@ -372,7 +300,7 @@ async function cerrarMano({ sock, chat, jugador, estado, prefijo, cambiadas = 0 
     excluir: jugador.jid,
   })
 
-  await enviarManoDM({
+  await enviarManoAlGrupo({
     sock,
     chat,
     jugador,
@@ -395,15 +323,29 @@ export default async ({ sock, jid, msg, args, sender, PREFIX }) => {
   const quien = sender || jid
   const grupal = esGrupo(jid)
 
-  // Privado del bot: las jugadas de cada jugador
+  // Póker se juega en el grupo: la mesa, las manos y las jugadas viven ahí.
   if (!grupal) {
-    const encontrada = mesaDelJugador(quien)
+    await sock.sendMessage(jid, {
+      text:
+        '🎲 *El póker se juega en el grupo.*\n' +
+        `Abrí la mesa donde están los jugadores: \`${prefijo}poker start <apuesta>\`.\n` +
+        '_Tu mano llega al grupo como mensaje de ver una vez, solo para vos._',
+    })
+    return
+  }
+
+  const mesa = mesaDeChat(jid)
+
+  // Jugadas de la mano: corren en el grupo, junto a la mesa
+  if (JUGADAS.has(sub)) {
+    const encontrada = mesa ? { chat: jid, estado: mesa } : null
 
     if (!encontrada) {
       await sock.sendMessage(jid, {
         text:
-          '❌ No estás en ninguna mesa.\n' +
-          '_Abre o únete a una mesa en el grupo con `/poker start` o `/poker join`._',
+          '❌ No hay mesa en este grupo.\n' +
+          `_Abrí una con \`${prefijo}poker start <apuesta>\` o sentate con \`${prefijo}poker join\`._`,
+        quoted: msg,
       })
       return
     }
@@ -411,32 +353,35 @@ export default async ({ sock, jid, msg, args, sender, PREFIX }) => {
     const { chat, estado } = encontrada
     const jugador = estado.jugadores.find((j) => j.jid === quien)
 
+    if (!jugador) {
+      await sock.sendMessage(jid, {
+        text: `❌ No estás sentado en esta mesa. Entrá con \`${prefijo}poker join\`.`,
+        quoted: msg,
+      })
+      return
+    }
+
     if (!enJuego(estado)) {
       await sock.sendMessage(jid, {
-        text: '⏳ La mesa todavía no reparte. Espera el `/poker go` en el grupo.',
+        text: `⏳ La mesa todavía no reparte. Esperá el \`${prefijo}poker go\` en el grupo.`,
+        quoted: msg,
       })
       return
     }
 
     if (jugador.abandonado) {
-      await sock.sendMessage(jid, { text: '🚪 Ya te retiraste de esta mesa.' })
+      await sock.sendMessage(jid, { text: '🚪 Ya te retiraste de esta mesa.', quoted: msg })
       return
     }
 
     // Ver la mano
-    if (!sub || sub === 'mano' || sub === 'hand' || sub === 'cartas' || sub === 'help' || sub === 'ayuda') {
-      await sock.sendMessage(jid, {
-        text:
-          `🃏 *PÓKER — tu mano*\n\n${tableroDM(estado, jugador)}\n\n` +
-          (jugador.listo
-            ? '⏳ Mano cerrada: esperando a los demás jugadores.'
-            : `${pieDM(prefijo)}\n✎ \`${prefijo}poker fold\` para retirarte`),
-      })
+    if (sub === 'mano' || sub === 'hand' || sub === 'cartas') {
+      await enviarManoAlGrupo({ sock, chat, jugador, estado, prefijo })
       return
     }
 
     // Retirarse
-    if (sub === 'fold' || sub === 'cancel' || sub === 'cancelar' || sub === 'retirar') {
+    if (sub === 'fold' || sub === 'retirar' || sub === 'retirarse') {
       if (jugador.listo) {
         await sock.sendMessage(jid, { text: '✔️ Ya cerraste tu mano.' })
         return
@@ -496,14 +441,6 @@ export default async ({ sock, jid, msg, args, sender, PREFIX }) => {
       jugador.conservar = conservar
       guardarPoker(chat, estado)
 
-      await sock.sendMessage(jid, {
-        text:
-          `🔒 Conservas *${conservar.length}* carta${conservar.length === 1 ? '' : 's'}.\n\n` +
-          `${tableroDM(estado, jugador)}\n\n` +
-          `✎ \`${prefijo}poker draw\` para cambiar el resto\n` +
-          `✎ \`${prefijo}poker stand\` para plantarte`,
-      })
-
       await anunciarProgreso({
         sock,
         chat,
@@ -512,6 +449,15 @@ export default async ({ sock, jid, msg, args, sender, PREFIX }) => {
           `🔒 *${nombreLegible(quien, obtenerUsuario)}* conserva *${conservar.length}* carta` +
           `${conservar.length === 1 ? '' : 's'}.`,
         excluir: quien,
+      })
+
+      await enviarManoAlGrupo({
+        sock,
+        chat,
+        jugador,
+        estado,
+        prefijo,
+        nota: `🔒 Conservás *${conservar.length}* carta${conservar.length === 1 ? '' : 's'}.`,
       })
       return
     }
@@ -549,14 +495,15 @@ export default async ({ sock, jid, msg, args, sender, PREFIX }) => {
 
     await sock.sendMessage(jid, {
       text:
-        `❓ No entendí esa jugada.\n\n${pieDM(prefijo)}\n` +
-        `✎ \`${prefijo}poker fold\` para retirarte`,
+        `❓ No entendí esa jugada.\n\n${pieJugadas(prefijo)}\n` +
+        `Retirarte: \`${prefijo}poker fold\``,
+      quoted: msg,
     })
     return
   }
 
   // Grupo: la mesa
-  const estado = mesaDeChat(jid)
+  const estado = mesa
 
   const mostrarReglas = async (extra = '') => {
     reglasVistas.add(jid)
@@ -760,7 +707,7 @@ export default async ({ sock, jid, msg, args, sender, PREFIX }) => {
     const menciones = []
     let entregados = 0
     for (const jugador of estado.jugadores) {
-      const ok = await enviarManoDM({ sock, chat: jid, jugador, estado, prefijo })
+      const ok = await enviarManoAlGrupo({ sock, chat: jid, jugador, estado, prefijo })
       if (ok) entregados++
       menciones.push(nombreLegible(jugador.jid, obtenerUsuario))
     }
@@ -770,11 +717,11 @@ export default async ({ sock, jid, msg, args, sender, PREFIX }) => {
         `🃏 *¡Reparto!* — *${estado.jugadores.length}* jugador${estado.jugadores.length === 1 ? '' : 'es'}\n` +
         `│ Banca: *5* cartas boca abajo\n` +
         `│ Apuesta: *${estado.apuesta}* oro\n\n` +
-        `📩 Manos enviadas por privado a: ${menciones.join(', ')}\n` +
+        `🃏 Manos repartidas a: ${menciones.join(', ')}\n` +
         (entregados < estado.jugadores.length
-          ? `⚠️ A *${estado.jugadores.length - entregados}* no pude escribirle: que abran el chat del bot y manden \`${prefijo}poker\`.\n`
+          ? `⚠️ A *${estado.jugadores.length - entregados}* no le salió la tarjeta: que pidan \`${prefijo}poker mano\`.\n`
           : '') +
-        `\n✎ Juega en mi privado: \`${prefijo}poker hold 1 3 5\` · \`${prefijo}poker draw\` · \`${prefijo}poker stand\``,
+        `\n✎ Acá mismo: \`${prefijo}poker hold 1 3 5\` · \`${prefijo}poker draw\` · \`${prefijo}poker stand\``,
       quoted: msg,
     })
     return
@@ -816,17 +763,6 @@ export default async ({ sock, jid, msg, args, sender, PREFIX }) => {
     return
   }
 
-  // Jugadas en el grupo: se mandan al privado
-  if (['hold', 'guardar', 'conservar', 'keep', 'draw', 'cambio', 'cambiar', 'robar', 'stand', 'plantarse', 'quedarse', 'show', 'fold', 'mano', 'hand'].includes(sub)) {
-    await sock.sendMessage(jid, {
-      text:
-        '🔒 *Tus jugadas van por privado.*\n' +
-        `Escríbeme \`${prefijo}poker\` en mi chat privado para ver tu mano.\n` +
-        '_Tu mano nunca se publica en el grupo._',
-      quoted: msg,
-    })
-    return
-  }
-
-  await mostrarReglas(`▶️ Abre mesa con \`${prefijo}poker start <apuesta>\``)
+  // Cualquier otra cosa no es jugada ni orden de mesa: se muestran las reglas
+  await mostrarReglas(`▶️ Abrí mesa con \`${prefijo}poker start <apuesta>\``)
 }

@@ -1437,7 +1437,62 @@ seccion('Stickers')
   }
 }
 
-// ───────────── 16. Boorus NSFW: el archivo que llega ─────────────
+// ───────────── 16. Manos de mesa: en el grupo y de ver una vez ─────────────
+seccion('Manos en el grupo')
+
+{
+  const modulo = await import('./lib/mano-grupo.js')
+  const fuente = leer('lib/mano-grupo.js')
+  const unoFuente = leer('commands/uno.js')
+  const pokerFuente = leer('commands/poker.js')
+
+  if (typeof modulo.enviarManoEnGrupo === 'function') ok('lib/mano-grupo.js exporta enviarManoEnGrupo')
+  else mal('lib/mano-grupo.js no exporta enviarManoEnGrupo')
+
+  if (fuente.includes('viewOnce: true')) ok('la mano viaja como mensaje de ver una vez')
+  else mal('la mano no se manda con viewOnce')
+
+  if (fuente.includes('AVISO_PRIVADO') && fuente.includes('este mensaje solo es visible para ti')) {
+    ok('el pie avisa que el mensaje solo lo ve su dueno')
+  } else {
+    mal('falta el aviso "este mensaje solo es visible para ti"')
+  }
+
+  // La tarjeta tiene que salir como PNG de verdad, con el texto dibujado
+  const png = await modulo.renderizarTarjeta({
+    titulo: 'UNO · tu mano',
+    subtitulo: '3 cartas',
+    lineas: ['R7  Rojo 7', 'AS  Azul Salta'],
+    pie: 'Jugá con /uno R7',
+  })
+  const esPng = png.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  const info = await sharp(png).metadata()
+  if (esPng && info.format === 'png' && info.width === 760 && info.height > 200) {
+    ok(`la tarjeta sale PNG ${info.width}x${info.height}`)
+  } else {
+    mal('la tarjeta no es un PNG valido', `${info.format} ${info.width}x${info.height}`)
+  }
+
+  // Ninguno de los dos juegos puede volver a escribir por privado
+  const privados = ['enviarPrivado', 'jidPrivado', 'enviarProgresoPrivado', 'enviarManoDM']
+  const fugas = privados.filter((n) => unoFuente.includes(n) || pokerFuente.includes(n))
+  if (!fugas.length) ok('ni UNO ni el póker escriben por privado')
+  else mal('todavía hay entrega por privado', fugas.join(', '))
+
+  if (unoFuente.includes('enviarManoEnGrupo') && pokerFuente.includes('enviarManoEnGrupo')) {
+    ok('los dos juegos entregan la mano en el grupo')
+  } else {
+    mal('algún juego no entrega la mano en el grupo')
+  }
+
+  // La orden de jugar ya no puede rebotar al privado
+  const rebotes = ['van por privado', 'en mi chat privado']
+  const dichos = rebotes.filter((frase) => unoFuente.includes(frase) || pokerFuente.includes(frase))
+  if (!dichos.length) ok('las jugadas se aceptan en el grupo, sin rebote al privado')
+  else mal('quedan mensajes que mandan al privado', dichos.join(' / '))
+}
+
+// ───────────── 17. Boorus NSFW: el archivo que llega ─────────────
 seccion('Boorus NSFW')
 {
   const nsfw = await import('./lib/nsfw.js')

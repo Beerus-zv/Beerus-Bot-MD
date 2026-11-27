@@ -124,7 +124,7 @@ import { fabricarModo } from './commands/modos.js'
 
 // ───────────── ComandosTomados de MEGA-MD ─────────────
 import { charlarConBeerus } from './commands/ia.js'
-import { esJugadaUno } from './commands/uno.js'
+
 // ── Lote Neko: banco, sociales y utilidades ──
 
 // Lote Perfiles (Neko): ficha, nivel y favoritos
@@ -1705,30 +1705,8 @@ const userSpamData = {}
           try { await C.autodetect({ sock, jid, msg, args: [], sender: msg.key.participant || msg.key.fromMe ? sock.user?.id : msg.key.remoteJid, esGrupo: true }) } catch {}
         }
 
-        // Jugada de UNO sin prefijo en el privado: "R6" equivale a ".uno R6"
-        if (!esGrupo && !prefijosActivos.some((p) => texto.startsWith(p)) && esJugadaUno(texto)) {
-          const terminar = log.comando({ nombre: 'uno (jugada)', args: [texto], jid })
-          try {
-            await C.uno({
-              sock,
-              jid,
-              msg,
-              args: [texto],
-              sender,
-              esGrupo: false,
-              commands: C,
-              BOT_NAME: nombreBot(),
-              PREFIX: prefijosActivos,
-              db,
-              jugadaSuelta: true,
-            })
-            terminar()
-          } catch (err) {
-            terminar(err)
-            log.error('Error en la jugada suelta de UNO', err)
-          }
-          return
-        }
+        // UNO, póker y damas se juegan solo en el grupo: no hay jugadas sueltas
+        // por privado que atender acá.
 
         const prefijo = prefijosActivos.find((p) => texto.startsWith(p))
         if (prefijo) {
