@@ -1533,7 +1533,14 @@ seccion('Botones')
     ],
   })
 
-  const flujo = enviados[0]?.message?.interactiveMessage?.nativeFlowMessage
+  const envoltorio = enviados[0]?.message?.viewOnceMessage?.message
+  if (envoltorio?.messageContextInfo?.deviceListMetadataVersion === 2 && envoltorio?.interactiveMessage) {
+    ok('el interactive va envuelto en viewOnceMessage (el servidor lo descarta suelto)')
+  } else {
+    mal('el interactiveMessage no viaja con el envoltorio viewOnceMessage')
+  }
+
+  const flujo = envoltorio?.interactiveMessage?.nativeFlowMessage
   if (salio && flujo?.buttons?.length === modulo.MAX_BOTONES) {
     ok(`el mensaje sale como nativeFlow con ${modulo.MAX_BOTONES} botones`)
   } else {
