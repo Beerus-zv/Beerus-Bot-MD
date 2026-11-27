@@ -42,6 +42,7 @@ import { barajar } from '../lib/juegos.js'
 import { esGrupo, digitosJid, mencionDeParticipantes } from '../lib/grupo.js'
 import { participantesGrupo } from '../lib/privado.js'
 import { enviarManoEnGrupo } from '../lib/mano-grupo.js'
+import { enviarBotones, botonComando } from '../lib/botones.js'
 import { nombreLegible } from '../lib/economia.js'
 
 /** Apuesta maxima por mano: evita desbordes y apuestas absurdas */
@@ -507,8 +508,17 @@ export default async ({ sock, jid, msg, args, sender, PREFIX }) => {
 
   const mostrarReglas = async (extra = '') => {
     reglasVistas.add(jid)
-    await sock.sendMessage(jid, {
-      text: REGLAS + (extra ? `\n\n${extra}` : ''),
+    await enviarBotones({
+      sock,
+      jid,
+      titulo: 'Póker',
+      texto: REGLAS + (extra ? `\n\n${extra}` : ''),
+      pie: 'Atajos de la mesa',
+      botones: [
+        botonComando('Abrir mesa', `${prefijo}poker start 0`),
+        botonComando('Sentarme', `${prefijo}poker join`),
+        botonComando('Repartir', `${prefijo}poker go`),
+      ],
       quoted: msg,
     })
   }
@@ -605,13 +615,21 @@ export default async ({ sock, jid, msg, args, sender, PREFIX }) => {
     }
     guardarPoker(jid, nueva)
 
-    await sock.sendMessage(jid, {
-      text:
-        `🃏 *Mesa de póker abierta*\n\n` +
+    await enviarBotones({
+      sock,
+      jid,
+      titulo: 'Póker · mesa abierta',
+      texto:
+        `🃏 *Mesa de póker abierta*\n` +
         `💰 Apuesta: *${apuesta}* oro por jugador\n` +
-        `👤 Creador: *${nombreLegible(quien, obtenerUsuario)}*\n` +
-        (delBanco > 0 ? `🏦 Del banco: *${delBanco}* oro\n` : '') +
-        `\n_Únete con \`${prefijo}poker join\` y reparte con \`${prefijo}poker go\`._`,
+        `👤 Creador: *${nombreLegible(quien, obtenerUsuario)}*` +
+        (delBanco > 0 ? `\n🏦 Del banco: *${delBanco}* oro` : ''),
+      pie: `Se juega desde ${prefijo}poker`,
+      botones: [
+        botonComando('Sentarme', `${prefijo}poker join`),
+        botonComando('Repartir', `${prefijo}poker go`),
+        botonComando('Mi mano', `${prefijo}poker mano`),
+      ],
       quoted: msg,
     })
     return

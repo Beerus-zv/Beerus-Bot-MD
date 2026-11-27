@@ -255,20 +255,12 @@ seccion('Menu principal')
   const configFuente3 = leer('config.js')
   const indiceFuente3 = leer('index.js')
 
-  // WhatsApp descarta en esta cuenta los botones, listas y quick replies:
-  // el menu tiene que salir siempre como imagen con pie de foto.
-  const prohibido = [
-    'relayMessage',
-    'interactiveMessage',
-    'nativeFlowMessage',
-    'quick_reply',
-    'single_select',
-    'enviarMenuConBoton',
-    'BOTON_TODOS',
-  ]
+  // Los botones viven en lib/botones.js: el menu los pide prestados en lugar
+  // de armar nativeFlow por su cuenta, asi hay un solo lugar que los dibuja.
+  const prohibido = ['relayMessage', 'interactiveMessage', 'nativeFlowMessage', 'quick_reply']
   const sobra = prohibido.filter((x) => menuFuente3.includes(x))
-  if (!sobra.length) ok('el menu no arma botones ni mensajes interactivos (WhatsApp los descarta)')
-  else mal('menu.js sigue armando mensajes que el cliente no dibuja', sobra.join(', '))
+  if (!sobra.length) ok('el menu no arma nativeFlow a mano: pide los botones al modulo')
+  else mal('menu.js arma mensajes interactivos por su cuenta', sobra.join(', '))
 
   if (!configFuente3.includes('MENU_CON_BOTON') && !configFuente3.includes('MENU_CON_LISTA')) {
     ok('no quedan interruptores de menu con botones en config.js')
@@ -276,10 +268,10 @@ seccion('Menu principal')
     mal('config.js conserva MENU_CON_BOTON / MENU_CON_LISTA')
   }
 
-  if (!fs.existsSync(path.join(RAIZ, 'lib/botones.js')) && !indiceFuente3.includes('lib/botones.js')) {
-    ok('se borro el modulo de botones y su enganche en el despachador')
+  if (fs.existsSync(path.join(RAIZ, 'lib/botones.js')) && indiceFuente3.includes('lib/botones.js')) {
+    ok('el modulo de botones existe y el despachador lo engancha')
   } else {
-    mal('quedan restos del modulo de botones')
+    mal('falta lib/botones.js o su enganche en index.js')
   }
 
   if (
@@ -1493,6 +1485,138 @@ seccion('Manos en el grupo')
 }
 
 // ───────────── 17. Boorus NSFW: el archivo que llega ─────────────
+// ───────────── 17. Botones: el id es el comando ─────────────
+seccion('Botones')
+{
+  const modulo = await import('./lib/botones.js')
+  const fuente = leer('lib/botones.js')
+  const indexFuente = leer('index.js')
+
+  const esperadas = ['enviarBotones', 'botonComando', 'botonUrl', 'botonCopiar', 'respuestaDeBoton']
+  const faltan = esperadas.filter((n) => typeof modulo[n] !== 'function')
+  if (!faltan.length) ok('lib/botones.js exporta la capa completa')
+  else mal('faltan funciones en lib/botones.js', faltan.join(', '))
+
+  // Baileys no arma este mensaje desde sendMessage (revienta en
+  // prepareWAMessageMedia), asi que tiene que salir por relayMessage.
+  if (fuente.includes('generateWAMessageFromContent') && fuente.includes('relayMessage')) {
+    ok('los botones se arman a mano y salen por relayMessage')
+  } else {
+    mal('los botones no usan generateWAMessageFromContent + relayMessage')
+  }
+
+  const enviados = []
+  const sock = {
+    user: { id: '999@s.whatsapp.net' },
+    relayMessage: async (jid, message) => {
+      enviados.push({ jid, message })
+      return 'OK'
+    },
+    sendMessage: async (jid, content) => {
+      enviados.push({ jid, content })
+      return { key: { id: 'FALLBACK' } }
+    },
+  }
+
+  // Cuatro botones: solo pasan tres, y cada uno vuelve como comando literal
+  const salio = await modulo.enviarBotones({
+    sock,
+    jid: '1203630@g.us',
+    titulo: 'Prueba',
+    texto: 'Elegí una opción',
+    pie: 'Atajos',
+    botones: [
+      modulo.botonComando('MP3', '/audio https://youtu.be/x'),
+      modulo.botonComando('Video', '/video https://youtu.be/x'),
+      modulo.botonComando('Menú', '/menu juegos'),
+      modulo.botonComando('Cuarto', '/cuarto'),
+    ],
+  })
+
+  const flujo = enviados[0]?.message?.interactiveMessage?.nativeFlowMessage
+  if (salio && flujo?.buttons?.length === modulo.MAX_BOTONES) {
+    ok(`el mensaje sale como nativeFlow con ${modulo.MAX_BOTONES} botones`)
+  } else {
+    mal('no salió un interactiveMessage con nativeFlow', `${salio} ${flujo?.buttons?.length}`)
+  }
+
+  const ids = (flujo?.buttons || []).map((b) => {
+    try {
+      return JSON.parse(b.buttonParamsJson).id
+    } catch {
+      return ''
+    }
+  })
+  if (ids[0] === '/audio https://youtu.be/x' && ids[1] === '/video https://youtu.be/x' && ids[2] === '/menu juegos') {
+    ok('el id de cada botón es el comando completo que hay que ejecutar')
+  } else {
+    mal('algún botón no devuelve el comando como id', ids.join(' | '))
+  }
+
+  // Respuestas que tienen que resolver al mismo comando
+  const casos = [
+    ['native flow', { interactiveResponseMessage: { nativeFlowResponseMessage: { paramsJson: JSON.stringify({ id: '/uno join' }) } } }, '/uno join'],
+    ['plantilla', { templateButtonReplyMessage: { selectedId: '/menu juegos' } }, '/menu juegos'],
+    ['botones viejos', { buttonsResponseMessage: { selectedButtonId: '/poker join' } }, '/poker join'],
+    ['lista', { listResponseMessage: { singleSelectReply: { selectedRowId: '/audio voz x' } } }, '/audio voz x'],
+  ]
+  const rotos = casos.filter(([, mensaje, esperado]) => modulo.respuestaDeBoton({ message: mensaje }) !== esperado)
+  if (!rotos.length) ok('las cuatro formas de respuesta devuelven el comando')
+  else mal('alguna respuesta a botón no se lee', rotos.map((c) => c[0]).join(', '))
+
+  if (modulo.respuestaDeBoton({ message: { conversation: 'hola' } }) === null) {
+    ok('un texto normal no se confunde con un botón')
+  } else {
+    mal('un texto normal se leyó como botón')
+  }
+
+  if (indexFuente.includes('respuestaDeBoton({ message: m })')) {
+    ok('index.js ejecuta el botón como si fuera texto escrito')
+  } else {
+    mal('index.js no pasa los botones por respuestaDeBoton')
+  }
+
+  // Si relayMessage falla el mensaje igual llega, con los comandos escritos
+  const antes = enviados.length
+  const sinBotones = await modulo.enviarBotones({
+    sock: {
+      user: { id: '999@s.whatsapp.net' },
+      relayMessage: async () => {
+        throw new Error('sin relay')
+      },
+      sendMessage: async (jid, content) => {
+        enviados.push({ jid, content })
+        return { key: { id: 'TXT' } }
+      },
+    },
+    jid: '1203630@g.us',
+    texto: 'Elegí',
+    botones: [modulo.botonComando('MP3', '/audio x')],
+  })
+  const respaldo = enviados[enviados.length - 1]?.content?.text || ''
+  if (!sinBotones && enviados.length > antes && respaldo.includes('/audio x')) {
+    ok('si el botón no sale, el comando queda escrito en el texto')
+  } else {
+    mal('el respaldo sin botones no lista el comando', respaldo)
+  }
+
+  // Los comandos que ganaron botones tienen que mandarlos de verdad
+  const usan = ['commands/audio.js', 'commands/video.js', 'commands/menu.js', 'commands/uno.js', 'commands/poker.js']
+  const sinUso = usan.filter((rel) => !leer(rel).includes('enviarBotones'))
+  if (!sinUso.length) ok('audio, video, menú, UNO y póker usan los botones')
+  else mal('algún comando quedó sin botones', sinUso.join(', '))
+
+  // El prefijo se puede cambiar en caliente: un botón con "/" fijo deja de
+  // funcionar en cuanto el owner pone otro.
+  const conPrefijo = ['commands/audio.js', 'commands/video.js', 'commands/uno.js', 'commands/poker.js']
+  const fijos = conPrefijo.filter((rel) => {
+    const texto = leer(rel)
+    return !texto.includes("PREFIX?.[0] ?? '/'") || !texto.includes('${prefijo}')
+  })
+  if (!fijos.length) ok('los botones usan el prefijo activo, no una barra fija')
+  else mal('algún botón tiene el prefijo fijo', fijos.join(', '))
+}
+
 seccion('Boorus NSFW')
 {
   const nsfw = await import('./lib/nsfw.js')

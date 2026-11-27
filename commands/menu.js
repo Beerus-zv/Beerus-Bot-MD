@@ -20,6 +20,7 @@ import {
   nombreBonito,
 } from '../lib/categorias.js'
 import { obtenerBannerMenu } from '../lib/banners-menu.js'
+import { enviarBotones, botonComando } from '../lib/botones.js'
 import { TEMA, ORNAMENTOS, panelLinea, fechaMenu } from '../lib/tema.js'
 import { obtenerAjuste } from '../database/db.js'
 import { tituloBot, monedaBot, iconoBot, bannerFijado, linkBot } from '../lib/ajustes-bot.js'
@@ -185,4 +186,18 @@ export default async ({ sock, jid, msg, args, commands, PREFIX }) => {
   const conBanner = Boolean(banner) && desde === 1
   const enviados = (conBanner ? 1 : 0) + (bloques.length - desde)
   log.depuracion(`menu · banner ${conBanner ? banner.id : 'no'} + indice en ${enviados} mensaje(s)`)
+
+  // Atajo: las tres categorías que más se abren, sin escribir el comando
+  await enviarBotones({
+    sock,
+    jid,
+    texto: `⚡ *${tituloBot()}*`,
+    pie: 'Atajos del menú',
+    botones: [
+      botonComando('🃏 Juegos', `${prefijo}menu juegos`),
+      botonComando('📥 Descargas', `${prefijo}menu descargas`),
+      botonComando('💰 Economía', `${prefijo}menu economia`),
+    ],
+    quoted: msg,
+  })
 }

@@ -33,6 +33,7 @@ import {
 } from '../lib/uno.js'
 import { nombreLegible, formatearNumero } from '../lib/economia.js'
 import { enviarManoEnGrupo } from '../lib/mano-grupo.js'
+import { enviarBotones, botonComando } from '../lib/botones.js'
 import { log } from '../lib/logger.js'
 
 const AYUDA = `🃏 *UNO*
@@ -552,7 +553,8 @@ async function jugarPorTiempo({ sock, grupo, jugador }) {
   })
 }
 
-export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
+export default async ({ sock, jid, msg, args, sender, PREFIX, esGrupo: esG }) => {
+  const prefijo = PREFIX?.[0] ?? '/'
   let sub = String(args[0] || 'help').toLowerCase()
   let resto = args.slice(1)
   const quien = sender || jid
@@ -601,11 +603,19 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
     }
 
     const id = crearPartidaUno({ grupo: jid, creador: quien, apuesta })
-    await sock.sendMessage(jid, {
-      text:
+    await enviarBotones({
+      sock,
+      jid,
+      titulo: 'UNO · mesa abierta',
+      texto:
         `🃏 *Partida de UNO creada* (id \`${id}\`)\n` +
-        `💰 Apuesta: *${apuesta}* oro por jugador\n\n` +
-        `_Únete con \`/uno join\` y empieza con \`/uno start\`._`,
+        `💰 Apuesta: *${apuesta}* oro por jugador`,
+      pie: `Se abre desde ${prefijo}uno`,
+      botones: [
+        botonComando('Unirme', `${prefijo}uno join`),
+        botonComando('Empezar', `${prefijo}uno start`),
+        botonComando('Mi mano', `${prefijo}uno hand`),
+      ],
       quoted: msg,
     })
     return
@@ -1145,5 +1155,17 @@ export default async ({ sock, jid, msg, args, sender, esGrupo: esG }) => {
   }
 
   // ───────────── Ayuda ─────────────
-  await sock.sendMessage(jid, { text: AYUDA, quoted: msg })
+  await enviarBotones({
+    sock,
+    jid,
+    titulo: 'UNO',
+    texto: AYUDA,
+    pie: 'Atajos de la partida',
+    botones: [
+      botonComando('Crear partida', `${prefijo}uno create 0`),
+      botonComando('Unirme', `${prefijo}uno join`),
+      botonComando('Empezar', `${prefijo}uno start`),
+    ],
+    quoted: msg,
+  })
 }

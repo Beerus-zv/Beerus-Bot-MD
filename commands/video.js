@@ -7,6 +7,7 @@ import {
   LIMITES,
 } from '../lib/descargas.js'
 import { log } from '../lib/logger.js'
+import { enviarBotones, botonComando } from '../lib/botones.js'
 
 const AYUDA = `🎬 *Video de YouTube*
 
@@ -25,7 +26,8 @@ _Busca en YouTube y envia el video (max ${LIMITES.video} MB)._`
  * Busca un video en YouTube y lo descarga con yt-dlp para enviarlo directo
  * al chat (antes reenviaba el video respondido; ahora descarga de YouTube).
  */
-export default async ({ sock, jid, msg, args }) => {
+export default async ({ sock, jid, msg, args, PREFIX }) => {
+  const prefijo = PREFIX?.[0] ?? '/'
   // /mp4doc (alias con 'doc') manda el video como documento
   const comoDocumento = args[0] === 'doc'
   const consulta = (comoDocumento ? args.slice(1) : args).join(' ').trim()
@@ -65,6 +67,33 @@ export default async ({ sock, jid, msg, args }) => {
       canal = elegido.canal
       duracion = elegido.duracion
       thumb = elegido.thumb
+
+      // Varios resultados: se elige con botones antes de descargar nada
+      const opciones = resultados.slice(0, 3)
+      if (opciones.length > 1) {
+        await enviarBotones({
+          sock,
+          jid,
+          titulo: `YouTube · ${consulta}`,
+          texto: opciones
+            .map(
+              (r, i) =>
+                `*${i + 1}.* ${r.titulo}` +
+                (r.duracion ? `\n    ⏱️ ${formatearDuracion(r.duracion)}` : '') +
+                (r.canal ? ` · 👤 ${r.canal}` : '')
+            )
+            .join('\n\n'),
+          pie: 'Elegí el video que querés',
+          botones: opciones.map((r, i) =>
+            botonComando(
+              `${i + 1}${r.duracion ? ` · ${formatearDuracion(r.duracion)}` : ''}`,
+              `${prefijo}video${comoDocumento ? ' doc' : ''} ${r.url}`
+            )
+          ),
+          quoted: msg,
+        })
+        return
+      }
     } else {
       await sock.sendMessage(jid, { text: '⏳ Descargando el video...' })
     }
@@ -119,6 +148,21 @@ export default async ({ sock, jid, msg, args }) => {
     log.depuracion(
       `video · ${titulo || resultado.titulo} -> video (${(resultado.bytes / 1048576).toFixed(1)} MB)`
     )
+
+    // Atajos: el mismo tema en audio o como documento, sin volver a buscar
+    if (url) {
+      await enviarBotones({
+        sock,
+        jid,
+        texto: `🎬 *${titulo || resultado.titulo}*`,
+        pie: '¿Lo querés de otra forma?',
+        botones: [
+          botonComando('Solo audio', `${prefijo}audio ${url}`),
+          botonComando('Como archivo', `${prefijo}video doc ${url}`),
+        ],
+        quoted: msg,
+      })
+    }
   } catch (err) {
     log.error('Error en /video', err)
     await sock.sendMessage(jid, {

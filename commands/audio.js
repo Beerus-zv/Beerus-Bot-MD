@@ -7,6 +7,7 @@ import {
   convertirANotaVoz,
 } from '../lib/descargas.js'
 import { log } from '../lib/logger.js'
+import { enviarBotones, botonComando } from '../lib/botones.js'
 
 const AYUDA = `🎵 *Audio de YouTube*
 
@@ -27,7 +28,8 @@ _Busca en YouTube y te envia el audio._`
  *
  * Envia un unico mensaje: miniatura + descripcion + audio.
  */
-export default async ({ sock, jid, msg, args }) => {
+export default async ({ sock, jid, msg, args, PREFIX }) => {
+  const prefijo = PREFIX?.[0] ?? '/'
   // /ytaudio (alias con 'voz') manda el audio como nota de voz (ptt)
   const comoVoz = args[0] === 'voz'
   const consulta = (comoVoz ? args.slice(1) : args).join(' ').trim()
@@ -63,6 +65,34 @@ export default async ({ sock, jid, msg, args }) => {
       canal = elegido.canal
       duracion = elegido.duracion
       thumb = elegido.thumb
+
+      // Con varios resultados se elige con botones antes de descargar: la
+      // busqueda ya trae el enlace, asi que el boton solo pide descargar ese.
+      const opciones = resultados.slice(0, 3)
+      if (opciones.length > 1) {
+        await enviarBotones({
+          sock,
+          jid,
+          titulo: `YouTube · ${consulta}`,
+          texto: opciones
+            .map(
+              (r, i) =>
+                `*${i + 1}.* ${r.titulo}` +
+                (r.duracion ? `\n    ⏱️ ${formatearDuracion(r.duracion)}` : '') +
+                (r.canal ? ` · 👤 ${r.canal}` : '')
+            )
+            .join('\n\n'),
+          pie: 'Elegí el audio que querés',
+          botones: opciones.map((r, i) =>
+            botonComando(
+              `${i + 1}${r.duracion ? ` · ${formatearDuracion(r.duracion)}` : ''}`,
+              `${prefijo}audio${comoVoz ? ' voz' : ''} ${r.url}`
+            )
+          ),
+          quoted: msg,
+        })
+        return
+      }
     }
 
     // ── Descarga (si el primer resultado falla, se prueban los siguientes) ──
@@ -138,6 +168,21 @@ export default async ({ sock, jid, msg, args }) => {
     log.depuracion(
       `audio · ${nombreFinal} -> audio (${(resultado.bytes / 1048576).toFixed(1)} MB, miniatura: ${miniatura ? 'si' : 'no'})`
     )
+
+    // Atajos: el mismo tema en video o como nota de voz, sin volver a buscar
+    if (url) {
+      await enviarBotones({
+        sock,
+        jid,
+        texto: `🎵 *${nombreFinal}*`,
+        pie: '¿Lo querés de otra forma?',
+        botones: [
+          botonComando('Como video', `${prefijo}video ${url}`),
+          botonComando('Nota de voz', `${prefijo}audio voz ${url}`),
+        ],
+        quoted: msg,
+      })
+    }
   } catch (err) {
     log.error('Error en /audio', err)
     await sock.sendMessage(jid, {

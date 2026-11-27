@@ -26,6 +26,7 @@ import { VERSION } from './lib/tema.js'
 import { autoReaccionar } from './lib/autoreact.js'
 import { marcarLeido } from './lib/autoread.js'
 import { capturarAudioDeSticker } from './lib/multimedia.js'
+import { respuestaDeBoton } from './lib/botones.js'
 import { categoriaDe } from './lib/categorias.js'
 import { revisarAntilink } from './lib/antilink.js'
 import { procesarCambioParticipantes } from './lib/bienvenida.js'
@@ -956,6 +957,11 @@ conectarRegistro(commands)
 // ───────────── Utilidades ─────────────
 function extraerTexto(message) {
   const m = normalizeMessageContent(message) // quita envoltorios (efímeros, view once, etc.)
+
+  // Botón tocado: el id es el comando completo que hay que ejecutar
+  const deBoton = respuestaDeBoton({ message: m })
+  if (deBoton) return deBoton
+
   return (
     m?.conversation ||
     m?.extendedTextMessage?.text ||
@@ -985,6 +991,15 @@ const idsEnviadosPorBot = new Set()
 function vieneDelBot(msg) {
   if (!msg?.key?.id) return false
   return idsEnviadosPorBot.has(msg.key.id)
+}
+
+/** Marca un mensaje saliente para que el bot no se responda a sí mismo */
+function anotarEnviado(id) {
+  if (!id) return
+  idsEnviadosPorBot.add(id)
+  if (idsEnviadosPorBot.size > 500) {
+    idsEnviadosPorBot.delete(idsEnviadosPorBot.values().next().value)
+  }
 }
 
 // ───────────── Caché de metadatos ─────────────
@@ -1285,14 +1300,29 @@ async function startBot() {
       // el log nunca debe romper un envío
     }
     const id = resultado?.key?.id
+    anotarEnviado(id)
 
-    if (id) {
-      idsEnviadosPorBot.add(id)
-      if (idsEnviadosPorBot.size > 500) {
-        idsEnviadosPorBot.delete(idsEnviadosPorBot.values().next().value)
-      }
+    return resultado
+  }
+
+  // Los mensajes armados a mano (botones, tarjetas de ver una vez) no pasan
+  // por `sendMessage`: salen por `relayMessage`. Se registran igual, con el
+  // mismo log y la misma marca anti-bucle.
+  const relayOriginal = sock.relayMessage.bind(sock)
+  sock.relayMessage = async (destino, mensaje, opciones) => {
+    let resultado
+    try {
+      resultado = await relayOriginal(destino, mensaje, opciones)
+    } catch (err) {
+      log.error(`Fallo al relayar a ${destino}`, err)
+      throw err
     }
-
+    try {
+      log.enviado(destino, mensaje)
+    } catch {
+      // el log nunca debe romper un envío
+    }
+    anotarEnviado(opciones?.messageId || (typeof resultado === 'string' ? resultado : resultado?.key?.id))
     return resultado
   }
 
@@ -1543,7 +1573,10 @@ const userSpamData = {}
 
         // Almacenar mensaje en caché para anti-delete
         const mensajeId = msg.key.id
-        const tieneContenido = texto !== '' || msg.message?.imageMessage || msg.message?.videoMessage || msg.message?.audioMessage || msg.message?.documentMessage || msg.message?.stickerMessage
+        // Un toque de botón no es un mensaje que se pueda recuperar: su texto es
+        // el comando, no algo que el usuario haya escrito.
+        const esToqueDeBoton = Boolean(msg.message?.interactiveResponseMessage)
+        const tieneContenido = !esToqueDeBoton && (texto !== '' || msg.message?.imageMessage || msg.message?.videoMessage || msg.message?.audioMessage || msg.message?.documentMessage || msg.message?.stickerMessage)
         if (mensajeId && tieneContenido) {
           guardarEnCache(mensajeId, {
             contenido: texto,
