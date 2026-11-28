@@ -1704,6 +1704,89 @@ seccion('Descargas limitadas')
   else mal('algun comando sigue culpando al enlace', `${avisados.length}/3`)
 }
 
+// ───────────── 17c. Resolvedor externo de descargas ─────────────
+seccion('Resolvedor externo')
+{
+  const http = await import('node:http')
+  const descargas = await import('./lib/descargas.js')
+  const fuente = leer('lib/descargas.js')
+
+  if (fuente.includes('API_DESCARGAS') && fuente.includes('/api/instagram')) {
+    ok('el resolvedor externo se configura por entorno')
+  } else {
+    mal('no hay soporte de resolvedor externo')
+  }
+
+  // Servidor de mentira con la forma que devuelve el resolvedor real
+  const media = Buffer.alloc(20000, 7)
+  const pedidos = []
+  const servidor = http.createServer((req, res) => {
+    pedidos.push(req.url)
+
+    if (req.url.startsWith('/api/instagram')) {
+      res.setHeader('content-type', 'application/json')
+      res.end(
+        JSON.stringify({
+          status: true,
+          titulo: 'Reel de prueba',
+          video: `http://127.0.0.1:${servidor.address().port}/media.mp4`,
+          items: [],
+        }),
+      )
+      return
+    }
+
+    if (req.url.startsWith('/api/social/audio')) {
+      res.setHeader('x-title', 'Tema%20de%20prueba')
+      res.setHeader('content-type', 'audio/mpeg')
+      res.end(media)
+      return
+    }
+
+    res.setHeader('content-type', 'video/mp4')
+    res.end(media)
+  })
+
+  await new Promise((listo) => servidor.listen(0, '127.0.0.1', listo))
+  const base = `http://127.0.0.1:${servidor.address().port}`
+  const previo = process.env.API_DESCARGAS
+  const previaClave = process.env.API_DESCARGAS_CLAVE
+
+  try {
+    process.env.API_DESCARGAS = base
+    process.env.API_DESCARGAS_CLAVE = 'clave-de-prueba'
+
+    const video = await descargas.descargarContenido('https://www.instagram.com/reel/PRUEBA/', { maxMB: 5 })
+    if (video.extension === 'mp4' && video.bytes === media.length && video.titulo === 'Reel de prueba') {
+      ok('el video llega desde el resolvedor, sin tocar yt-dlp')
+    } else {
+      mal('el video no llegó del resolvedor', `${video.extension} ${video.bytes} ${video.titulo}`)
+    }
+
+    const audio = await descargas.descargarContenido('https://www.instagram.com/reel/PRUEBA/', {
+      maxMB: 5,
+      soloAudio: true,
+    })
+    if (audio.extension === 'mp3' && audio.titulo === 'Tema de prueba') {
+      ok('el audio llega desde el resolvedor con su título')
+    } else {
+      mal('el audio no llegó del resolvedor', `${audio.extension} ${audio.titulo}`)
+    }
+
+    if (pedidos.some((p) => p.includes('plataforma=instagram'))) {
+      ok('el pedido de audio lleva la plataforma en la URL')
+    } else {
+      mal('el pedido de audio no lleva la plataforma')
+    }
+  } finally {
+    await new Promise((listo) => servidor.close(listo))
+    if (previo === undefined) delete process.env.API_DESCARGAS
+    else process.env.API_DESCARGAS = previo
+    if (previaClave === undefined) delete process.env.API_DESCARGAS_CLAVE
+    else process.env.API_DESCARGAS_CLAVE = previaClave
+  }
+}
+
 seccion('Boorus NSFW')
 {
   const nsfw = await import('./lib/nsfw.js')
