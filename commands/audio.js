@@ -5,6 +5,7 @@ import {
   mimeDe,
   formatearDuracion,
   convertirANotaVoz,
+  esLimiteDeTasa,
 } from '../lib/descargas.js'
 import { log } from '../lib/logger.js'
 import { enviarBotones, botonComando } from '../lib/botones.js'
@@ -185,9 +186,9 @@ export default async ({ sock, jid, msg, args, PREFIX }) => {
     }
   } catch (err) {
     log.error('Error en /audio', err)
-    await sock.sendMessage(jid, {
-      text: `💥 *No se pudo obtener el audio.*\n_${err.message}_\n\n_Prueba con otro nombre o con el enlace del video._`,
-      quoted: msg,
-    })
+    const texto = esLimiteDeTasa(err)
+      ? `⏳ *No se pudo bajar ahora.*\n\n${err.message}`
+      : `💥 *No se pudo obtener el audio.*\n_${err.message}_\n\n_Prueba con otro nombre o con el enlace del video._`
+    await sock.sendMessage(jid, { text: texto, quoted: msg })
   }
 }

@@ -5,6 +5,7 @@ import {
   formatearDuracion,
   normalizarVideoWhatsApp,
   LIMITES,
+  esLimiteDeTasa,
 } from '../lib/descargas.js'
 import { log } from '../lib/logger.js'
 import { enviarBotones, botonComando } from '../lib/botones.js'
@@ -165,11 +166,10 @@ export default async ({ sock, jid, msg, args, PREFIX }) => {
     }
   } catch (err) {
     log.error('Error en /video', err)
-    await sock.sendMessage(jid, {
-      text:
-        `💥 *No se pudo obtener el video.*\n_${err.message}_\n\n` +
-        `_Prueba con otro nombre, o usa \`/dl <url>\` si ya tienes el enlace._`,
-      quoted: msg,
-    })
+    const texto = esLimiteDeTasa(err)
+      ? `⏳ *No se pudo bajar ahora.*\n\n${err.message}`
+      : `💥 *No se pudo obtener el video.*\n_${err.message}_\n\n` +
+        `_Prueba con otro nombre, o usa \`/dl <url>\` si ya tienes el enlace._`
+    await sock.sendMessage(jid, { text: texto, quoted: msg })
   }
 }

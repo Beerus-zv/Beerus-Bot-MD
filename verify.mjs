@@ -1639,6 +1639,71 @@ seccion('Botones')
   else mal('algún botón tiene el prefijo fijo', fijos.join(', '))
 }
 
+// ───────────── 17b. Descargas frenadas por la plataforma ─────────────
+seccion('Descargas limitadas')
+{
+  const descargas = await import('./lib/descargas.js')
+  const fuente = leer('lib/descargas.js')
+  const comando = leer('lib/comando-descarga.js')
+  const audio = leer('commands/audio.js')
+  const video = leer('commands/video.js')
+
+  // El error exacto que llega cuando Instagram corta por IP de servidor
+  const real = new Error(
+    'ERROR: [Instagram] DFSMLcsB_T2: Unable to download webpage: ' +
+      'HTTP Error 429: Too Many Requests (caused by <HTTPError 429: Too Many Requests>)',
+  )
+  if (descargas.esLimiteDeTasa(real)) ok('el 429 de Instagram se reconoce como limite de tasa')
+  else mal('el 429 no se detecta y se reintenta al pedo')
+
+  if (!descargas.esLimiteDeTasa(new Error('No se encontro ningun formato descargable'))) {
+    ok('un enlace roto no se confunde con un limite de tasa')
+  } else {
+    mal('cualquier error se toma como limite de tasa')
+  }
+
+  const aviso = descargas.mensajeLimite('instagram')
+  if (/429/.test(aviso) && /data\/cookies-instagram\.txt/.test(aviso)) {
+    ok('el aviso dice que freno la plataforma y donde dejar las cookies')
+  } else {
+    mal('el aviso de limite no explica nada', aviso.slice(0, 80))
+  }
+
+  // Las cookies se enganchan solas desde data/, sin tocar codigo
+  const ruta = path.join(RAIZ, 'data', 'cookies-instagram.txt')
+  const existia = fs.existsSync(ruta)
+  const previo = process.env.YTDLP_COOKIES
+  try {
+    if (!existia) {
+      fs.mkdirSync(path.dirname(ruta), { recursive: true })
+      fs.writeFileSync(ruta, '# Netscape HTTP Cookie File\n')
+    }
+    delete process.env.YTDLP_COOKIES
+
+    const encontrada = descargas.rutaCookies('instagram')
+    const args = descargas.argumentosRed('instagram')
+    if (encontrada === ruta && args.includes('--cookies') && args.includes('--sleep-requests')) {
+      ok('las cookies de data/ se pasan solas y en Instagram se frena el ritmo')
+    } else {
+      mal('las cookies de data/ no se enganchan', String(encontrada))
+    }
+  } finally {
+    if (!existia) fs.rmSync(ruta, { force: true })
+    if (previo === undefined) delete process.env.YTDLP_COOKIES
+    else process.env.YTDLP_COOKIES = previo
+  }
+
+  if (fuente.includes("'--impersonate'") && fuente.includes('10000 * intento')) {
+    ok('un 429 espera de verdad y reintenta como navegador real')
+  } else {
+    mal('el reintento por 429 no espera ni cambia de perfil')
+  }
+
+  const avisados = [comando, audio, video].filter((t) => t.includes('esLimiteDeTasa'))
+  if (avisados.length === 3) ok('descarga, audio y video avisan del limite, no de un enlace caido')
+  else mal('algun comando sigue culpando al enlace', `${avisados.length}/3`)
+}
+
 seccion('Boorus NSFW')
 {
   const nsfw = await import('./lib/nsfw.js')
