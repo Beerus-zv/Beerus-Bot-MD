@@ -1787,6 +1787,75 @@ seccion('Resolvedor externo')
   }
 }
 
+// ───────────── 17d. Actualizador y el ruido de npm ─────────────
+seccion('Actualizador limpio')
+{
+  const actualizador = await import('./lib/actualizador.js')
+  const fuente = leer('lib/actualizador.js')
+
+  // Repositorio de verdad en una carpeta temporal: la prueba es el
+  // archivo restaurado, no un texto que diga que lo restaura.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'beerus-upd-'))
+  const enTmp = (args) => spawnSync('git', args, { cwd: tmp, encoding: 'utf8' })
+  const lock = path.join(tmp, 'package-lock.json')
+  const pkg = path.join(tmp, 'package.json')
+  const lockOriginal = '{"name":"t","lockfileVersion":3}\n'
+
+  try {
+    enTmp(['init', '--quiet'])
+    enTmp(['config', 'user.email', 'test@test'])
+    enTmp(['config', 'user.name', 'test'])
+    // En Windows el checkout devuelve CRLF y el archivo escrito era LF: la
+    // prueba seria un falso negativo por los finales de linea, no por el codigo.
+    enTmp(['config', 'core.autocrlf', 'false'])
+    fs.writeFileSync(pkg, '{"name":"t","version":"1.0.0"}\n')
+    fs.writeFileSync(lock, lockOriginal)
+    enTmp(['add', '.'])
+    enTmp(['commit', '--quiet', '-m', 'base'])
+
+    // Lo que hace npm en Linux: reescribe el lock con las opcionales del sistema
+    fs.writeFileSync(lock, '{"name":"t","lockfileVersion":3,"linux":true}\n')
+
+    const sucios = actualizador.ruidoDeNpm(tmp)
+    if (sucios.length === 1 && sucios[0] === 'package-lock.json') {
+      ok('el lock que reescribe npm se reconoce como ruido')
+    } else {
+      mal('el lock sucio no se detecta', JSON.stringify(sucios))
+    }
+
+    const descartados = actualizador.descartarRuidoDeNpm(tmp)
+    const volvio = fs.readFileSync(lock, 'utf8') === lockOriginal
+    const limpio = enTmp(['status', '--porcelain', '--untracked-files=no']).stdout.trim() === ''
+    if (descartados.includes('package-lock.json') && volvio && limpio) {
+      ok('el ruido se descarta, el arbol queda limpio y el pull no se traba')
+    } else {
+      mal('el ruido no se descarta', `${volvio} ${limpio}`)
+    }
+
+    // Un cambio de verdad no se toca nunca
+    fs.writeFileSync(pkg, '{"name":"t","version":"9.9.9","mio":true}\n')
+    actualizador.descartarRuidoDeNpm(tmp)
+    if (fs.readFileSync(pkg, 'utf8').includes('9.9.9')) {
+      ok('un cambio propio fuera de los generados sobrevive intacto')
+    } else {
+      mal('se descarto un cambio que no era ruido')
+    }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true })
+  }
+
+  // El orden importa: limpiar antes del stash y despues del npm install
+  const antesDelStash = fuente.indexOf('descartarRuidoDeNpm()')
+  const stash = fuente.indexOf("git(['stash', 'push'")
+  const npmInstall = fuente.indexOf('npm install --no-audit')
+  const despuesDelNpm = fuente.indexOf('descartarRuidoDeNpm()', npmInstall)
+  if (antesDelStash > 0 && antesDelStash < stash && despuesDelNpm > npmInstall) {
+    ok('se limpia antes del stash y otra vez despues de instalar')
+  } else {
+    mal('falta una de las dos limpiezas', `${antesDelStash}/${stash}/${despuesDelNpm}`)
+  }
+}
+
 seccion('Boorus NSFW')
 {
   const nsfw = await import('./lib/nsfw.js')
