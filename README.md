@@ -416,6 +416,9 @@ node iniciar.js --no-update # arrancar sin actualizador
 | `NO_COLOR=1` | Apaga los colores de la consola (se apagan solos si no es una terminal) |
 | `FORCE_COLOR=1` | Fuerza los colores, útil cuando el hosting redirige la salida a un archivo |
 | `PINTEREST_MAX_VIDEO_MB` | Tope del video de un pin de Pinterest (por defecto 50) |
+| `LIMPIADOR_ACTIVO=0` | Apaga el auto limpiador de disco |
+| `LIMPIADOR_INTERVALO_MIN` | Cada cuántos minutos limpia (por defecto 30) |
+| `LIMPIADOR_GRACIA_MIN` | Minutos extra de gracia antes de borrar (por defecto 0) |
 
 **Formato de la consola:** cada línea lleva hora y tipo (`MSG` entrante, `CMD` comando, `OUT` enviado, `SEC` seguridad, `SYS` sistema, `WARN` aviso, `ERR` error, `SUB` sub-bot). Un comando abre con `┌` y cierra con `└` y su duración, así se sigue aunque el bot mande mensajes en el medio. Al arrancar se imprime una caja con el nombre, los prefijos, la versión de Node y la del bot.
 
@@ -589,6 +592,28 @@ Nunca pisa trabajo local: si hay cambios sin guardar en archivos versionados, o 
 git pull
 npm install    # solo si cambió package.json
 npm start
+```
+
+## Limpieza automática de disco
+
+El bot descarga video, stickers y audios, y eso deja restos. `lib/limpiador.js` corre cada 30 minutos y borra lo que ya no sirve:
+
+| Carpeta | Borra a partir de | Tope de la carpeta |
+|:---|:---|:---|
+| `tmp/` | 6 horas | 250 MB |
+| `data/tmp/` | 2 horas | 150 MB |
+| `logs/` | 7 días | 60 MB |
+
+- Nunca toca `auth_info/` (la sesión), `data/beerus.db` ni archivos recientes: lo que se usó en los últimos 15 minutos se queda quieto, así no borra una descarga en curso.
+- Tampoco entra en subcarpetas (`tmp/baileys`, `tmp/subbot` son andamiaje de pruebas).
+- Borra por lotes de 25 con una pausa corta, para no clavar el disco mientras el bot responde.
+- Si una carpeta pasa su tope, se van primero los archivos más viejos hasta que entre.
+
+`.limpiador` muestra el estado y lo acumulado; `.limpiador ahora` fuerza una pasada. Ambos son solo para el owner.
+
+```bash
+LIMPIADOR_ACTIVO=0 node index.js        # apagarlo del todo
+LIMPIADOR_INTERVALO_MIN=60 node index.js
 ```
 
 ## Problemas comunes

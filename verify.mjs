@@ -1856,6 +1856,121 @@ seccion('Actualizador limpio')
   }
 }
 
+// ───────────── 17e. Auto limpiador de disco ─────────────
+seccion('Auto limpiador')
+{
+  const limpiador = await import('./lib/limpiador.js')
+  const fuente = leer('lib/limpiador.js')
+
+  const raiz = fs.mkdtempSync(path.join(os.tmpdir(), 'beerus-limp-'))
+  const viejo = Date.now() - 5 * 24 * 3_600_000
+  const muyViejo = Date.now() - 8 * 24 * 3_600_000
+  const hace3h = Date.now() - 3 * 3_600_000
+  const crear = (rel, bytes = 1024) => {
+    const ruta = path.join(raiz, rel)
+    fs.mkdirSync(path.dirname(ruta), { recursive: true })
+    fs.writeFileSync(ruta, Buffer.alloc(bytes, 1))
+    return ruta
+  }
+  const envejecer = (ruta, ms) => fs.utimesSync(ruta, new Date(ms), new Date(ms))
+  const existe = (rel) => fs.existsSync(path.join(raiz, rel))
+
+  try {
+    const muerto = crear('tmp/viejo.mp4', 4096)
+    envejecer(muerto, viejo)
+    const vivo = crear('tmp/recien-bajado.mp4', 4096)          // gracia: no se toca
+    const sesion = crear('tmp/creds.json', 128)                 // protegido por nombre
+    envejecer(sesion, viejo)
+    const dentroDeSub = crear('tmp/subbot/sesion.json', 128)    // subcarpeta: no se toca
+    envejecer(dentroDeSub, viejo)
+    const descarga = crear('data/tmp/dl_viejo.mp4', 2048)
+    envejecer(descarga, hace3h)
+    const logViejo = crear('logs/viejo.log', 256)
+    envejecer(logViejo, muyViejo)
+    const logNuevo = crear('logs/hoy.log', 256)
+
+    const reglas = [
+      { carpeta: 'tmp', etiqueta: 'tmp', edadMs: 6 * 3_600_000, topeMB: 250 },
+      { carpeta: 'data/tmp', etiqueta: 'descargas', edadMs: 2 * 3_600_000, topeMB: 150 },
+      { carpeta: 'logs', etiqueta: 'logs', edadMs: 7 * 24 * 3_600_000, topeMB: 60 },
+    ]
+
+    const pasada = await limpiador.limpiarAhora({ raiz, reglas })
+
+    if (!existe('tmp/viejo.mp4') && !existe('data/tmp/dl_viejo.mp4') && !existe('logs/viejo.log')) {
+      ok('lo que venció por edad se borra en las tres carpetas')
+    } else {
+      mal('quedó basura vieja sin borrar')
+    }
+
+    if (existe('tmp/recien-bajado.mp4') && existe('logs/hoy.log')) {
+      ok('lo recién usado se queda quieto (ventana de gracia)')
+    } else {
+      mal('se borró un archivo recién usado')
+    }
+
+    if (existe('tmp/creds.json') && existe('tmp/subbot/sesion.json')) {
+      ok('no toca archivos protegidos ni entra en subcarpetas')
+    } else {
+      mal('se metió donde no debía')
+    }
+
+    if (pasada.borrados === 3 && pasada.carpetas.reduce((s, c) => s + c.liberados, 0) === 6400) {
+      ok('el reporte cuadra: 3 borrados y los bytes liberados')
+    } else {
+      mal('el reporte no cuadra', `${pasada.borrados} ${pasada.carpetas.reduce((s, c) => s + c.liberados, 0)}`)
+    }
+
+    // Tope de tamaño: 3 archivos viejos de 1 MB con tope de 2 MB dejan 2,
+    // y se van los más viejos primero.
+    const pesada = 'pesada'
+    for (const [nombre, cuando] of [
+      ['a.bin', Date.now() - 3 * 3_600_000],
+      ['b.bin', Date.now() - 2 * 3_600_000],
+      ['c.bin', Date.now() - 3_600_000],
+    ]) {
+      envejecer(crear(`${pesada}/${nombre}`, 1_048_576), cuando)
+    }
+
+    const poda = await limpiador.limpiarAhora({
+      raiz,
+      reglas: [{ carpeta: pesada, etiqueta: 'pesada', edadMs: 30 * 24 * 3_600_000, topeMB: 2 }],
+    })
+    const quedan = fs.readdirSync(path.join(raiz, pesada)).sort()
+    if (poda.borrados === 1 && quedan.join(',') === 'b.bin,c.bin') {
+      ok('el tope de tamaño borra primero lo más viejo')
+    } else {
+      mal('el tope de tamaño no podó bien', `${poda.borrados} [${quedan.join(',')}]`)
+    }
+
+    // Una carpeta que no existe no rompe la pasada
+    const sinNada = await limpiador.limpiarAhora({
+      raiz,
+      reglas: [{ carpeta: 'no-existe', etiqueta: 'x', edadMs: 1000, topeMB: 10 }],
+    })
+    if (sinNada.carpetas[0].motivo === 'no existe' && sinNada.borrados === 0) {
+      ok('una carpeta que no existe se anota y la pasada sigue')
+    } else {
+      mal('una carpeta inexistente rompe la pasada')
+    }
+  } finally {
+    fs.rmSync(raiz, { recursive: true, force: true })
+  }
+
+  if (fuente.includes('GRACIA_MINIMA_MS') && fuente.includes('TAMANO_LOTE')) {
+    ok('borra por lotes y respeta el piso de seguridad')
+  } else {
+    mal('falta el borrado por lotes o el piso de seguridad')
+  }
+
+  const estado = limpiador.estadoLimpiador()
+  if (estado.reglas.length >= 3 && estado.intervaloMin >= 5) {
+    ok('el servicio declara sus reglas y su intervalo')
+  } else {
+    mal('el estado del limpiador está incompleto')
+  }
+}
+
 seccion('Boorus NSFW')
 {
   const nsfw = await import('./lib/nsfw.js')

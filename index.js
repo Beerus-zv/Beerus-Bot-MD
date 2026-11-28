@@ -39,6 +39,7 @@ import { COMANDOS_VIP, esVip, jidsDe } from './lib/vip.js'
 import { prefijosBot, modoPrivado, nombreBot } from './lib/ajustes-bot.js'
 import { registrarSocket, quitarSocket } from './lib/sockets.js'
 import { configurarSubBots, restaurarSubBots, fijarVersionWhatsApp } from './lib/subbot.js'
+import { iniciarLimpiador } from './lib/limpiador.js'
 import { reporteParches } from './scripts/parche-baileys.mjs'
 
 // Los tres parches de vinculacion de Baileys son la diferencia entre "el codigo
@@ -321,6 +322,7 @@ const commands = {
   dadu: C.dado,
   inspect: C.inspect,
   cleartmp: C.cleartmp,
+  limpiador: C.limpiador,
   groupinfo: C.groupinfo,
   invite: C.invite,
   resetlink: C.resetlink,
@@ -2009,6 +2011,10 @@ for (const señal of ['SIGINT', 'SIGTERM', 'exit']) {
     if (señal !== 'exit') process.exit(0)
   })
 }
+
+// Limpiador de basura en disco. La primera pasada va con retraso (2 min) y
+// despues cada 30: el arranque en frio necesita el disco para el socket.
+iniciarLimpiador()
 
 process.on('unhandledRejection', (err) => {
   log.error('Promesa rechazada sin manejar', err)
