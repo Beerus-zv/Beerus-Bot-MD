@@ -1508,8 +1508,8 @@ seccion('Botones')
   const enviados = []
   const sock = {
     user: { id: '999@s.whatsapp.net' },
-    relayMessage: async (jid, message) => {
-      enviados.push({ jid, message })
+    relayMessage: async (jid, message, opciones) => {
+      enviados.push({ jid, message, opciones })
       return 'OK'
     },
     sendMessage: async (jid, content) => {
@@ -1545,6 +1545,21 @@ seccion('Botones')
     ok(`el mensaje sale como nativeFlow con ${modulo.MAX_BOTONES} botones`)
   } else {
     mal('no salió un interactiveMessage con nativeFlow', `${salio} ${flujo?.buttons?.length}`)
+  }
+
+  // Sin el nodo <biz> el servidor acepta el envío y el cliente no dibuja nada.
+  const biz = (enviados[0]?.opciones?.additionalNodes || []).find((n) => n.tag === 'biz')
+  const bizInteractivo = biz?.content?.find((n) => n.tag === 'interactive')
+  const flujoDelNodo = bizInteractivo?.content?.find((n) => n.tag === 'native_flow')
+  if (
+    biz?.attrs?.actual_actors === '2' &&
+    bizInteractivo?.attrs?.type === 'native_flow' &&
+    flujoDelNodo?.attrs?.name === 'mixed' &&
+    biz.content?.some((n) => n.tag === 'quality_control')
+  ) {
+    ok('el envío lleva el nodo biz de los interactivos')
+  } else {
+    mal('falta el nodo biz: WhatsApp entrega el mensaje y el cliente no lo dibuja')
   }
 
   const ids = (flujo?.buttons || []).map((b) => {
