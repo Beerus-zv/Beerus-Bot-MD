@@ -1702,6 +1702,60 @@ seccion('Descargas limitadas')
   const avisados = [comando, audio, video].filter((t) => t.includes('esLimiteDeTasa'))
   if (avisados.length === 3) ok('descarga, audio y video avisan del limite, no de un enlace caido')
   else mal('algun comando sigue culpando al enlace', `${avisados.length}/3`)
+
+  // Proxy: la otra salida cuando la IP del servidor esta marcada
+  const previos = {
+    instagram: process.env.PROXY_INSTAGRAM,
+    general: process.env.PROXY_DESCARGAS,
+    ytdlp: process.env.YTDLP_PROXY,
+  }
+  try {
+    delete process.env.PROXY_INSTAGRAM
+    delete process.env.PROXY_DESCARGAS
+    delete process.env.YTDLP_PROXY
+    if (descargas.proxyDescarga('instagram') === null) {
+      ok('sin variables de entorno no se usa ningun proxy')
+    } else {
+      mal('aparece un proxy que nadie configuro')
+    }
+
+    process.env.PROXY_DESCARGAS = 'http://user:pass@127.0.0.1:8080'
+    const general = descargas.argumentosRed('instagram')
+    const conProxy = general.indexOf('--proxy')
+    if (conProxy >= 0 && general[conProxy + 1] === process.env.PROXY_DESCARGAS) {
+      ok('PROXY_DESCARGAS se pasa a yt-dlp con --proxy')
+    } else {
+      mal('el proxy configurado no llega a yt-dlp')
+    }
+
+    // La variable por plataforma gana sobre la general
+    process.env.PROXY_INSTAGRAM = 'socks5://127.0.0.1:1080'
+    if (descargas.proxyDescarga('instagram') === 'socks5://127.0.0.1:1080') {
+      ok('el proxy por plataforma gana sobre el general')
+    } else {
+      mal('el proxy por plataforma no tiene prioridad', String(descargas.proxyDescarga('instagram')))
+    }
+  } finally {
+    for (const [clave, valor] of Object.entries(previos)) {
+      const nombre = clave === 'instagram' ? 'PROXY_INSTAGRAM' : clave === 'general' ? 'PROXY_DESCARGAS' : 'YTDLP_PROXY'
+      if (valor === undefined) delete process.env[nombre]
+      else process.env[nombre] = valor
+    }
+  }
+
+  // El diagnostico tiene que separar "no hay motor" de "la IP esta frenada"
+  if (fuente.includes('export async function probarMotor') && fuente.includes("alcanzar('https://www.instagram.com/'")) {
+    ok('el diagnostico prueba la red con un fetch, aparte del enlace')
+  } else {
+    mal('el diagnostico no distingue la red del enlace')
+  }
+
+  const comandoTexto = leer('commands/dltest.js')
+  if (/esLimiteDeTasa/.test(comandoTexto) && /PROXY_DESCARGAS/.test(comandoTexto)) {
+    ok('el diagnostico nombra las tres salidas cuando la IP esta frenada')
+  } else {
+    mal('el diagnostico no dice como destrabar el limite')
+  }
 }
 
 // ───────────── 17c. Resolvedor externo de descargas ─────────────

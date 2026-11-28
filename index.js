@@ -323,6 +323,7 @@ const commands = {
   inspect: C.inspect,
   cleartmp: C.cleartmp,
   limpiador: C.limpiador,
+  dltest: C.dltest,
   groupinfo: C.groupinfo,
   invite: C.invite,
   resetlink: C.resetlink,

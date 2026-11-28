@@ -419,6 +419,11 @@ node iniciar.js --no-update # arrancar sin actualizador
 | `LIMPIADOR_ACTIVO=0` | Apaga el auto limpiador de disco |
 | `LIMPIADOR_INTERVALO_MIN` | Cada cuántos minutos limpia (por defecto 30) |
 | `LIMPIADOR_GRACIA_MIN` | Minutos extra de gracia antes de borrar (por defecto 0) |
+| `PROXY_DESCARGAS` | Proxy para las descargas: `http://usuario:clave@host:puerto` |
+| `PROXY_INSTAGRAM` | Proxy solo para Instagram (gana sobre el general) |
+| `YTDLP_COOKIES` | Ruta a un `cookies.txt` en formato Netscape |
+| `API_DESCARGAS` | Resolvedor externo de descargas (opcional) |
+| `API_DESCARGAS_CLAVE` | Clave del resolvedor, viaja como `x-api-key` |
 
 **Formato de la consola:** cada línea lleva hora y tipo (`MSG` entrante, `CMD` comando, `OUT` enviado, `SEC` seguridad, `SYS` sistema, `WARN` aviso, `ERR` error, `SUB` sub-bot). Un comando abre con `┌` y cierra con `└` y su duración, así se sigue aunque el bot mande mensajes en el medio. Al arrancar se imprime una caja con el nombre, los prefijos, la versión de Node y la del bot.
 
@@ -682,6 +687,21 @@ yt-dlp se queda viejo rápido. Borrar el binario para que se descargue la versi�
 rm -rf data/yt-dlp
 npm start
 ```
+
+</details>
+
+<details>
+<summary>Instagram responde «HTTP 429» o «empty media response»</summary>
+
+<br>
+
+No es el enlace ni el binario: es la IP del servidor, que Instagram tiene marcada. `.dltest <enlace>` lo confirma — si el motor y la red salen ✅ y el enlace falla con 429, el que está frenado es la IP.
+
+Tres salidas, de la más barata a la más cara:
+
+1. **Cookies de una cuenta** (gratis). Exportá `instagram.com` con la extensión «Get cookies.txt LOCALLY» y subí el archivo como `data/cookies-instagram.txt`. El bot lo toma solo. Usá una cuenta descartable y refrescá el archivo cuando caduque.
+2. **Proxy** solo para descargas. `PROXY_DESCARGAS=http://usuario:clave@host:puerto` (o `PROXY_INSTAGRAM` para esa plataforma sola). El resto del bot sigue saliendo por la IP normal.
+3. **Resolvedor propio**. `API_DESCARGAS=https://mi-servidor` y el bot le pide el contenido ya resuelto desde otra IP.
 
 </details>
 
